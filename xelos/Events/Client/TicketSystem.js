@@ -79,7 +79,7 @@ async function createTicket(i, settings, category, subject) {
   // One atomic predicate and insert per guild: simultaneous processes cannot reserve two slots for one user.
   const reserved = await Server.findOneAndUpdate({ guildId: i.guildId, destekChannel: settings.destekChannel, destekRole: settings.destekRole, 'destekUser.userId': { $ne: i.user.id } }, {
     $inc: { destekCount: 1 }, $push: { destekUser: { userId: i.user.id, reservationId, createdAt: new Date(), closed: false } },
-  }, { new: true });
+  }, { returnDocument: 'after' });
   if (!reserved) throw new Error('You already have a ticket or the setup has changed.');
   let channel;
   try {
