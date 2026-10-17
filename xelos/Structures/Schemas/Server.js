@@ -2,6 +2,8 @@ const { Schema, model } = require('mongoose');
 const schema = new Schema({
   guildId: { type: String, required: true, unique: true },
   destekChannel: String,
+  setupOwner: String,
+  setupExpires: Date,
   destekMesajKanal: String,
   panel: { type: Schema.Types.Mixed, default: null },
   panelChannelId: String,
@@ -12,7 +14,7 @@ const schema = new Schema({
   destekRole: { type: [String], default: [] },
   destekCount: { type: Number, default: 0 },
   destekkategoriListesi: { type: Array, default: [] },
-  destekUser: [{ channelId: String, userId: String, ticketName: String,
+  destekUser: [{ channelId: String, userId: String, ticketName: String, reservationId: String, createdAt: Date,
     claimedBy: { type: String, default: null }, closed: { type: Boolean, default: false } }],
   destekAutoResponses: [{ keyword: { type: String, required: true }, response: { type: String, required: true } }],
 });

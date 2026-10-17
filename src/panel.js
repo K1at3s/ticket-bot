@@ -8,7 +8,7 @@ export const panelCommand = require('../xelos/Commands/Ticket/panel.js').data;
 export async function handlePanel(interaction) {
   if (await handleBuilder(interaction)) return true;
   if (interaction.customId?.startsWith('panel:')) {
-    await interaction.reply({ content: 'Bu eski panel önizlemesi artık geçerli değil. /biletpaneli komutuyla çoklu parça oluşturucuyu aç.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'This old panel preview has expired. Use /ticketpanel to open the multi-block builder.', flags: MessageFlags.Ephemeral });
     return true;
   }
   return false;

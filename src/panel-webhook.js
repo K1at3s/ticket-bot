@@ -4,10 +4,11 @@ export function webhookEnabled(panel) {
 
 export function resolveIdentity(panel, guild) {
   const icon = guild?.iconURL?.({ size: 512 }) || '';
-  const tokens = { '{sunucuadı}': guild?.name || 'Tickets', '{sunucuismi}': guild?.name || 'Tickets',
+  const tokens = { '{servername}': guild?.name || 'Tickets', '{servericon}': icon, '{serveravatar}': icon,
+    '{sunucuadı}': guild?.name || 'Tickets', '{sunucuismi}': guild?.name || 'Tickets',
     '{sunucuadi}': guild?.name || 'Tickets', '{sunucuikonu}': icon, '{sunucuavatarı}': icon };
   const replace = value => String(value || '').replace(/\{[^{}]+\}/g, token => tokens[token] ?? token);
-  return { ...panel, webhookName: replace(panel.webhookName || '{sunucuadı}').slice(0, 80), webhookAvatar: replace(panel.webhookAvatar) };
+  return { ...panel, webhookName: replace(panel.webhookName || '{servername}').slice(0, 80), webhookAvatar: replace(panel.webhookAvatar) };
 }
 
 export function webhookMessages(panel) {
@@ -32,10 +33,10 @@ export function webhookMessages(panel) {
 export function validateWebhook(panel) {
   for (const key of ['webhookImage', 'webhookAvatar']) {
     if (!panel[key]) continue;
-    if (key === 'webhookAvatar' && ['{sunucuikonu}', '{sunucuavatarı}'].includes(panel[key])) continue;
+    if (key === 'webhookAvatar' && ['{servericon}', '{serveravatar}', '{sunucuikonu}', '{sunucuavatarı}'].includes(panel[key])) continue;
     let url;
-    try { url = new URL(panel[key]); } catch { throw new Error('Webhook görseli için geçerli bir URL gir.'); }
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Webhook görselleri HTTP veya HTTPS adresi olmalı.');
+    try { url = new URL(panel[key]); } catch { throw new Error('Enter a valid webhook image URL.'); }
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Webhook images must use HTTP or HTTPS URLs.');
   }
 }
 
@@ -49,7 +50,7 @@ export async function publishWebhook(panel, channel, saved, botId, persist) {
   if (!hook?.token || hook.owner?.id !== botId) {
     hook = hooks.find(h => h.owner?.id === botId && h.name === 'Ticket Panel' && h.token);
   }
-  if (!hook) hook = await channel.createWebhook({ name: 'Ticket Panel', reason: 'Ticket paneli üst mesajları' });
+  if (!hook) hook = await channel.createWebhook({ name: 'Ticket Panel', reason: 'Ticket panel header messages' });
   const same = saved?.channelId === channel.id && saved.webhookId === hook.id;
   const state = { channelId: channel.id, webhookId: hook.id, imageId: same ? saved.imageId : null, textId: same ? saved.textId : null };
   const signature = JSON.stringify([webhookMessages(panel).map(([, enabled]) => Boolean(enabled)), panel.webhookName, panel.webhookAvatar, 2]);

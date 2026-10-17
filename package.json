@@ -2,23 +2,23 @@
   "name": "discord-ticket-bot",
   "version": "1.0.0",
   "private": true,
-  "description": "Discord.js ve MongoDB ile ticket botu",
+  "description": "Discord.js and MongoDB ticket bot with a multi-message panel builder",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "bun --env-file=.env src/index.js",
     "dev": "bun --env-file=.env --watch src/index.js",
     "check": "node --check src/index.js && node --check src/config.js && node --check src/database.js",
-    "test": "bun tests/panel-builder.cjs"
+    "test": "bun tests/panel-builder.cjs && bun tests/security.cjs && bun tests/english.cjs"
   },
   "engines": {
     "node": ">=24.17.0"
   },
   "dependencies": {
-    "debug": "^4.4.3",
-    "discord-html-transcripts": "latest",
-    "discord.js": "latest",
-    "mongoose": "latest",
-    "ms": "^2.1.3"
+    "debug": "4.4.3",
+    "discord-html-transcripts": "3.3.0",
+    "discord.js": "14.27.0",
+    "mongoose": "9.11.2",
+    "ms": "2.1.3"
   }
 }

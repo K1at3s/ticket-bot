@@ -13,9 +13,14 @@ async function main() {
   const embed = newBlock('embed', { title: 'İkinci embed', body: 'Açıklama', color: '#123456' });
   assert.equal(blockPayload(image).embeds[0].description, undefined);
   assert.equal(blockPayload(image).embeds[0].title, undefined);
+  const spacedImage = blockPayload({ ...image, content: '{boşluk}\n{boşluk}' });
+  assert.equal(spacedImage.content, '\u200B\n\u200B');
+  assert.equal(spacedImage.embeds[0].description, undefined);
+  assert.equal(blockPayload({ ...image, content: 'Üst mesaj' }).content, 'Üst mesaj');
+  assert.equal(blockPayload({ ...image, content: '' }).content, null);
   assert.throws(() => blockPayload(newBlock('image', { image: 'file:///private' })), /HTTP/);
-  assert.throws(() => blockPayload(newBlock('embed')), /başlık/);
-  assert.throws(() => blockPayload(newBlock('embed', { title: 'X', color: 'red' })), /Rengi/);
+  assert.throws(() => blockPayload(newBlock('embed')), /title/);
+  assert.throws(() => blockPayload(newBlock('embed', { title: 'X', color: 'red' })), /HEX color/);
   const moved = [image, text, embed];
   assert.equal(moveBlock(moved, 2, -1), 1);
   assert.deepEqual(moved.map(b => b.id), [image.id, embed.id, text.id]);
@@ -50,30 +55,32 @@ async function main() {
   assert.equal(events[3][1].embeds[0].title, embed.title);
 
   const Server = localRequire('./xelos/Structures/Schemas/Server.js');
-  const settings = { destekChannel: 'category', destekRole: ['staff'], destekkategoriListesi: [{ label: 'Genel', value: 'general' }] };
+  const settings = { guildId: 'guild', destekChannel: 'category', destekRole: ['staff'], destekkategoriListesi: [{ label: 'General', value: 'general' }] };
   Server.findOne = async () => settings;
   Server.updateOne = async (filter, update) => { Object.assign(settings, update.$set); };
   const { handleBuilder } = await import(moduleUrl('panel-builder'));
   const { handlePanel } = await import(moduleUrl('panel'));
   let ui, modal;
-  const base = { user: { id: 'owner' }, guildId: 'guild', inGuild: () => true, memberPermissions: { has: () => true },
+  const member = { id: 'owner', permissions: { has: () => true }, roles: { cache: new Map() } };
+  const members = { fetch: async () => member, me: {} };
+  const base = { locale: 'tr', guild: { id: 'guild', members }, user: { id: 'owner' }, guildId: 'guild', inGuild: () => true, memberPermissions: { has: () => true },
     isChatInputCommand: () => false, isModalSubmit: () => false,
     reply: async p => { ui = p; }, editReply: async p => { ui = p; }, update: async p => { ui = p; },
     showModal: async p => { modal = p.toJSON(); }, deferReply: async () => {}, deferUpdate: async () => {} };
   const command = { ...base, commandName: 'ticketpanel', isChatInputCommand: () => true,
     options: { getChannel: () => ({ id: 'channel' }), getString: () => 'select' } };
   assert.equal(await handlePanel(command), true);
-  assert.match(ui.content, /Henüz parça yok/);
+  assert.match(ui.content, /No blocks yet/);
   const serialize = () => ui.components.map(c => c.toJSON());
   assert.ok(serialize().length <= 5);
   const id = serialize()[0].components[0].custom_id.split(':')[2];
   const click = async action => handleBuilder({ ...base, customId: `builder:${action}:${id}` });
   const submit = async data => handleBuilder({ ...base, customId: modal.custom_id, isModalSubmit: () => true, isFromMessage: () => true,
     fields: { fields: new Map(Object.entries(data).map(([k, v]) => [k, { value: v }])) } });
-  await click('addimage'); await submit({ image: image.image, color: '#5865F2' });
+  await click('addimage'); await submit({ image: image.image, color: '#5865F2', content: '{boşluk}\n{boşluk}' });
   await click('addtext'); await submit({ body: 'Orta metin' });
   await click('addembed'); await submit({ title: 'Son embed', body: '', image: '', color: '#123456' });
-  assert.match(ui.content, /3\/15 parça/);
+  assert.match(ui.content, /3\/15 blocks/);
   assert.equal(serialize()[1].components[0].options.length, 3);
   await click('up');
   const labels = serialize()[1].components[0].options.map(o => o.label);
@@ -85,7 +92,7 @@ async function main() {
   await click('delete');
   assert.equal(serialize()[1].components[0].options.length, 2);
   await handleBuilder({ ...base, user: { id: 'other' }, customId: `builder:delete:${id}` });
-  assert.match(ui.content, /sana ait değil/);
+  assert.match(ui.content, /does not belong to you/);
   // Recover editor view then publish; all headers must precede the bot message.
   await click('down');
   events.length = 0;
@@ -93,21 +100,22 @@ async function main() {
     events.push(['bot', payload]); return { id: 'menu', url: 'https://discord.com/channels/guild/channel/menu' };
   } });
   await handleBuilder({ ...base, customId: `builder:publish:${id}`, client: { user: { id: 'bot' } },
-    guild: { channels: { fetch: async () => channel }, members: { me: {} } } });
+    guild: { channels: { fetch: async () => channel }, members } });
   assert.deepEqual(events.map(e => e[0]), ['send', 'send', 'bot']);
+  assert.equal(events[0][1].content, '\u200B\n\u200B');
   assert.equal(events[2][1].content, null);
   assert.equal(events[2][1].embeds.length, 0);
   assert.equal(settings.panel.blocks.length, 2);
-  assert.match(ui.content, /yayınlandı/);
+  assert.match(ui.content, /published/);
   await handlePanel(command);
-  assert.match(ui.content, /2\/15 parça/);
+  assert.match(ui.content, /2\/15 blocks/);
   const ticketCommand = localRequire('./xelos/Commands/Ticket/ticket-channel.js');
   const editOption = ticketCommand.data.toJSON().options.find(o => o.name === 'edit');
-  assert.equal(editOption.name_localizations.tr, 'düzenle');
-  await ticketCommand.execute({ ...base, locale: 'tr', guild: { id: 'guild' }, commandName: 'ticketsystem',
+  assert.equal(editOption.name_localizations, undefined);
+  await ticketCommand.execute({ ...base, locale: 'tr', guild: { id: 'guild', members }, commandName: 'ticketsystem',
     isChatInputCommand: () => true, member: { permissions: { has: () => true } },
     options: { getSubcommand: () => 'edit' } }, {});
-  assert.match(ui.content, /2\/15 parça/);
+  assert.match(ui.content, /2\/15 blocks/);
   assert.match(ui.content, /<#channel>/);
   const setup = localRequire('./xelos/Structures/Handlers/panelSetup.js').panelSetup('owner', 'channel', 'select');
   assert.match(setup.components[0].toJSON().components[0].custom_id, /^builder:create:/);

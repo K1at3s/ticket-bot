@@ -1,408 +1,197 @@
-const {
-  EmbedBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  Colors,
-  Events,
-  ChannelType,
-  ActionRowBuilder,
-  PermissionsBitField,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  MessageFlags,
-} = require("discord.js");
-const serverDB = require("../../Structures/Schemas/Server");
-const { createTranscript } = require("discord-html-transcripts");
-const { randomBytes } = require('crypto');
-const logger = require("../../Structures/Handlers/logger");
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Colors, EmbedBuilder, Events, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { randomBytes } = require('node:crypto');
+const { createTranscript } = require('discord-html-transcripts');
+const Server = require('../../Structures/Schemas/Server');
+const S = require('../../Structures/Handlers/security');
+const logger = require('../../Structures/Handlers/logger');
+const pending = new Map();
+const transcriptLimit = 2000;
+const privateReply = (i, content) => i.reply({ content, flags: MessageFlags.Ephemeral });
 
-/**
- * Creates a new ticket channel based on the interaction and server settings.
- * @param {import('discord.js').Interaction} interaction The interaction that triggered the ticket creation.
- * @param {object} kategoriVeri The server's data from the database.
- * @param {object} [secilenKategori] The specific category selected by the user, if any.
- */
-async function createTicketChannel(interaction, kategoriVeri, secilenKategori = null, subject = "Destek Talebi") {
-  const isTurkish = interaction.locale.startsWith("tr");
-  const roller = kategoriVeri.destekRole || [];
-  const destekCount = (kategoriVeri.destekCount || 0) + 1;
-
-  await serverDB.findOneAndUpdate(
-    { guildId: interaction.guild.id },
-    { $set: { destekCount } },
-    { upsert: true }
-  );
-
-  // Her bilet için benzersiz, rastgele bir ID oluştur
-  const ticketName = `ticket-${randomBytes(4).toString('hex')}`;
-
-  const permissionOverwrites = [
-    { id: interaction.client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory, PermissionsBitField.Flags.AttachFiles, PermissionsBitField.Flags.EmbedLinks, PermissionsBitField.Flags.ManageChannels] },
-    ...roller.map((roleId) => ({
-      id: roleId,
-      allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory, PermissionsBitField.Flags.AttachFiles],
-    })),
-    {
-      id: interaction.guild.id,
-      deny: [PermissionsBitField.Flags.ViewChannel],
-    },
-    {
-      id: interaction.user.id,
-      allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory, PermissionsBitField.Flags.AttachFiles],
-    },
-  ];
-
-  const destekKanal = await interaction.guild.channels.create({
-    name: ticketName,
-    type: ChannelType.GuildText,
-    parent: kategoriVeri.destekChannel,
-    permissionOverwrites,
+function buttons(closed) {
+  return new ActionRowBuilder().addComponents(...(closed ? [
+    new ButtonBuilder().setCustomId('del').setLabel('Delete ticket').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('transcript').setLabel('Transcript').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('open').setLabel('Reopen').setStyle(ButtonStyle.Success),
+  ] : [
+    new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim ticket').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('close').setLabel('Close ticket').setStyle(ButtonStyle.Secondary),
+  ]));
+}
+function remember(i, data) {
+  const now = Date.now();
+  for (const [key, item] of pending) if (item.expires <= now) pending.delete(key);
+  if (pending.size >= 10000) throw new Error('Too many pending forms. Please try again later.');
+  const id = randomBytes(12).toString('hex');
+  pending.set(id, { ...data, user: i.user.id, guild: i.guildId, expires: now + 300000 });
+  return id;
+}
+function consume(i, kind) {
+  const id = i.customId.split(':')[1];
+  const entry = pending.get(id);
+  if (!entry || entry.kind !== kind || entry.user !== i.user.id || entry.guild !== i.guildId || entry.expires < Date.now()) return null;
+  pending.delete(id);
+  return entry;
+}
+async function transcript(channel) {
+  return createTranscript(channel, {
+    limit: transcriptLimit, returnType: 'attachment', filename: `${channel.id}.html`, poweredBy: false, saveImages: false,
+    callbacks: { resolveChannel: async id => id === channel.id ? channel : null },
   });
+}
+async function writeLog(channel, settings, ticket, reason, closer) {
+  if (!settings.destekLogChannel) return;
+  try {
+    const log = await channel.guild.channels.fetch(settings.destekLogChannel);
+    await S.privateLog(log, settings, channel.client.user.id);
+    const attachment = await transcript(channel);
 
-  const rolEtiket = roller.map((r) => `<@&${r}>`).join(", ");
-
-  const embed = new EmbedBuilder()
-    .setTitle(`Konu: ${subject}`)
-    .setDescription(
-      isTurkish
-        ? `Talebiniz açıldı, yetkili ekip en kısa sürede ilgilenecektir.`
-        : `Your ticket has been opened, the authorized team will assist you as soon as possible.`
-    )
-    .setColor(Colors.Green)
-    .setTimestamp()
-    .addFields(
-      { name: isTurkish ? 'Kategori' : 'Category', value: `\`${secilenKategori ? secilenKategori.label : (isTurkish ? "Genel" : "General")}\``, inline: true },
-      { name: isTurkish ? 'Talep No' : 'Ticket #', value: `\`#${destekCount}\``, inline: true }
-    )
-    .setAuthor({
-      name: interaction.guild.name,
-      iconURL: interaction.guild.iconURL({ dynamic: true }),
-    });
-
-  const ticketActionRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("claim_ticket")
-      .setLabel(isTurkish ? "✋ Talebi Üstlen" : "✋ Claim Ticket")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId("close")
-      .setLabel(isTurkish ? "🔒 Talebi Kapat" : "🔒 Close Ticket")
-      .setStyle(ButtonStyle.Secondary)
-  );
-
-  await destekKanal.send({
-    content: `${isTurkish ? "Hoş geldin" : "Welcome"} <@${interaction.user.id}> | ${rolEtiket}`,
-    embeds: [embed],
-    components: [ticketActionRow],
+    const embed = new EmbedBuilder().setColor(Colors.Orange).setTitle('Ticket Closed').addFields(
+      { name: 'Ticket ID', value: ticket.ticketName || channel.id },
+      { name: 'Opened By', value: `<@${ticket.userId}>`, inline: true },
+      { name: 'Closed By', value: `<@${closer}>`, inline: true },
+      { name: 'Close Reason', value: reason.slice(0, 1000) },
+    ).setFooter({ text: `The transcript includes up to ${transcriptLimit} recent messages.` }).setTimestamp();
+    await log.send({ embeds: [embed], files: [attachment], allowedMentions: { parse: [] } });
+  } catch (error) { logger.error('Unable to send the transcript to the private log channel', error); }
+}
+async function closeTicket(channel, settings, ticket, reason, closer) {
+  if (ticket.closed) return;
+  // Revoke access before writing the closed state; a failed permission change must not report success.
+  await channel.permissionOverwrites.edit(ticket.userId, { ViewChannel: false, SendMessages: false });
+  const result = await Server.updateOne({ guildId: channel.guild.id, 'destekUser.channelId': channel.id }, {
+    $set: { 'destekUser.$.closed': true, 'destekUser.$.claimedBy': null },
   });
-
-  const autoResponses = kategoriVeri.destekAutoResponses || [];
-  for (const ar of autoResponses) {
-    if (ar.response) {
-      await destekKanal.send({ content: ar.response }).catch(() => {});
-    }
+  if (!result.matchedCount) throw new Error('Ticket record not found.');
+  await writeLog(channel, settings, ticket, reason, closer);
+  await channel.setName(`closed-${ticket.ticketName || channel.id}`.slice(0, 100));
+  await channel.send({ embeds: [new EmbedBuilder().setColor(Colors.Red).setTitle('Ticket Closed').setDescription(`Closed by: <@${closer}>`).addFields({ name: 'Reason', value: reason.slice(0, 1000) })], components: [buttons(true)], allowedMentions: { parse: [] } });
+}
+async function createTicket(i, settings, category, subject) {
+  const roles = await S.supportRoles(i.guild, settings.destekRole);
+  const parent = await i.guild.channels.fetch(settings.destekChannel);
+  if (parent?.type !== ChannelType.GuildCategory) throw new Error('Ticket category not found.');
+  const { PermissionsBitField: { Flags: P } } = require('discord.js');
+  if (!parent.permissionsFor(i.guild.members.me)?.has([P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.AttachFiles, P.EmbedLinks, P.ManageChannels, P.ManageRoles])) {
+    throw new Error('The bot needs channel/permission management, messaging, history, embed and attachment permissions in the ticket category.');
   }
-
-  await serverDB.updateOne(
-    { guildId: interaction.guild.id },
-    { $push: { destekUser: { channelId: destekKanal.id, userId: interaction.user.id, claimedBy: null, ticketName, closed: false } } }
-  );
-  await interaction.editReply({ content: `Talebiniz açıldı: ${destekKanal}` });
+  const reservationId = randomBytes(12).toString('hex');
+  // One atomic predicate and insert per guild: simultaneous processes cannot reserve two slots for one user.
+  const reserved = await Server.findOneAndUpdate({ guildId: i.guildId, destekChannel: settings.destekChannel, destekRole: settings.destekRole, 'destekUser.userId': { $ne: i.user.id } }, {
+    $inc: { destekCount: 1 }, $push: { destekUser: { userId: i.user.id, reservationId, createdAt: new Date(), closed: false } },
+  }, { new: true });
+  if (!reserved) throw new Error('You already have a ticket or the setup has changed.');
+  let channel;
+  try {
+    const ticketName = `ticket-${randomBytes(6).toString('hex')}`;
+    channel = await i.guild.channels.create({ name: ticketName, type: ChannelType.GuildText, parent: parent.id,
+      permissionOverwrites: S.ticketOverwrites(i.guildId, i.client.user.id, i.user.id, roles) });
+    const result = await Server.updateOne({ guildId: i.guildId, 'destekUser.reservationId': reservationId }, {
+      $set: { 'destekUser.$.channelId': channel.id, 'destekUser.$.ticketName': ticketName },
+    });
+    if (!result.matchedCount) throw new Error('Unable to create the ticket record.');
+    const embed = new EmbedBuilder().setColor(Colors.Green).setTitle(`Subject: ${subject}`).setDescription('The support team will assist you as soon as possible.').addFields(
+      { name: 'Category', value: category?.label || 'General', inline: true }, { name: 'Ticket number', value: String(reserved.destekCount), inline: true });
+    await channel.send({ content: `<@${i.user.id}> ${roles.map(id => `<@&${id}>`).join(' ')}`, embeds: [embed], components: [buttons(false)],
+      allowedMentions: { parse: [], users: [i.user.id], roles } });
+    for (const response of settings.destekAutoResponses || []) if (response.response) await channel.send({ content: response.response.slice(0, 2000), allowedMentions: { parse: [] } });
+    await i.editReply({ content: `Your ticket has been opened: ${channel}` });
+  } catch (error) {
+    let removed = !channel;
+    if (channel) {
+      try { await channel.delete('Ticket creation rolled back'); removed = true; }
+      catch (cleanupError) { logger.error('Unable to clean up the ticket channel; keeping its record', cleanupError); }
+    }
+    if (removed) await Server.updateOne({ guildId: i.guildId }, { $pull: { destekUser: { reservationId } } });
+    throw error;
+  }
 }
 
-module.exports = {
-  name: Events.InteractionCreate,
-
-  execute: async (interaction) => {
-    const isTurkish = interaction.locale.startsWith("tr");
-
-    if (
-      interaction.isStringSelectMenu() &&
-      interaction.customId === "kategori_secim"
-    ) {
-      // Kullanıcının zaten talebi var mı kontrol et
-      const kategoriVeri = await serverDB.findOne({ guildId: interaction.guild.id });
-      const aktifTalep = kategoriVeri?.destekUser?.find(
-        (u) => u.userId === interaction.user.id
-      );
-      if (aktifTalep) {
-        return interaction.reply({
-          content: isTurkish
-            ? "❌ Zaten aktif bir destek talebiniz var."
-            : "❌ You already have an active support ticket.",
-          flags: [MessageFlags.Ephemeral],
-        });
-      }
-
-      if (!kategoriVeri?.destekChannel) return interaction.reply({ content: 'Ticket sistemi ayarlanmamış.', flags: MessageFlags.Ephemeral });
-      const modal = new ModalBuilder()
-        .setCustomId(`create_ticket_subject_modal_cat:${interaction.values[0]}`)
-        .setTitle(isTurkish ? 'Destek Talebi Oluştur' : 'Create Support Ticket');
-      const subjectInput = new TextInputBuilder().setCustomId('ticket_subject').setMaxLength(200).setLabel(isTurkish ? "Talebinizin Konusu" : "Subject of your Ticket").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder(isTurkish ? 'Örn: Siparişim gelmedi, bir kullanıcıyı şikayet etmek istiyorum...' : 'e.g., My order did not arrive, I want to report a user...');
-      const actionRow = new ActionRowBuilder().addComponents(subjectInput);
-      modal.addComponents(actionRow);
-      await interaction.showModal(modal);
-
+async function execute(i) {
+  if (!i.inGuild()) return;
+  const isOpen = (i.isButton() && i.customId === 'tic') || (i.isStringSelectMenu() && i.customId === 'kategori_secim');
+  const isCreateForm = i.isModalSubmit() && i.customId.startsWith('ticket-create:');
+  const isCloseForm = i.isModalSubmit() && i.customId.startsWith('ticket-close:');
+  const action = i.isButton() ? i.customId : isCloseForm ? 'close' : null;
+  const controls = new Set(['claim_ticket', 'close', 'open', 'del', 'transcript']);
+  if (!isOpen && !isCreateForm && !isCloseForm && !controls.has(action)) return;
+  const member = await S.actor(i);
+  if (!member) return privateReply(i, 'Unable to verify your server membership.');
+  const settings = await Server.findOne({ guildId: i.guildId });
+  if (!settings) return privateReply(i, 'The ticket system is not configured.');
+  if (isOpen || isCreateForm) {
+    if (!settings.destekChannel || !settings.destekRole?.length) return privateReply(i, 'The ticket system is disabled or incomplete.');
+    if (isOpen) {
+      if (!i.message || i.message.author.id !== i.client.user.id || i.message.id !== settings.panelMessageId || i.channelId !== settings.panelChannelId) return privateReply(i, 'This ticket panel is no longer valid.');
+      if (!S.rateLimit(`ticket-form:${i.guildId}:${i.user.id}`, 3, 30000)) return privateReply(i, 'Please wait a moment and try again.');
+      if (settings.destekUser.some(ticket => ticket.userId === i.user.id)) return privateReply(i, 'You already have a ticket channel.');
+      const category = i.isStringSelectMenu() ? settings.destekkategoriListesi.find(c => c.value === i.values[0]) : null;
+      if (i.isStringSelectMenu() && !category) return privateReply(i, 'This category is no longer valid.');
+      const nonce = remember(i, { kind: 'create', category: category?.value, panel: settings.panelMessageId });
+      await i.showModal(new ModalBuilder().setCustomId(`ticket-create:${nonce}`).setTitle('Create ticket').addComponents(
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('ticket_subject').setLabel('Subject').setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(200))));
+      return;
     }
-
-    if (interaction.isButton()) {
-      if (interaction.customId === "tic") {
-        const kategoriVeri = await serverDB.findOne({ guildId: interaction.guild.id });
-
-        if (!kategoriVeri || !kategoriVeri.destekChannel) {
-            return interaction.reply({ content: isTurkish ? "Destek sistemi bu sunucuda ayarlanmamış." : "Ticket system is not configured on this server.", flags: [MessageFlags.Ephemeral] });
-        }
-
-        const aktifTalep = kategoriVeri?.destekUser?.find(u => u.userId === interaction.user.id);
-        if (aktifTalep) {
-          return interaction.reply({
-            content: isTurkish
-              ? "❌ Zaten aktif bir destek talebiniz var."
-              : "❌ You already have an active support ticket.",
-          flags: [MessageFlags.Ephemeral],
-          });
-        }
-
-        const modal = new ModalBuilder()
-            .setCustomId('create_ticket_subject_modal_btn')
-            .setTitle(isTurkish ? 'Destek Talebi Oluştur' : 'Create Support Ticket');
-        const subjectInput = new TextInputBuilder().setCustomId('ticket_subject').setMaxLength(200).setLabel(isTurkish ? "Talebinizin Konusu" : "Subject of your Ticket").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder(isTurkish ? 'Örn: Siparişim gelmedi, bir kullanıcıyı şikayet etmek istiyorum...' : 'e.g., My order did not arrive, I want to report a user...');
-        const actionRow = new ActionRowBuilder().addComponents(subjectInput);
-        modal.addComponents(actionRow);
-        await interaction.showModal(modal);
-
-      } else if (interaction.customId === "claim_ticket") {
-        const serverData = await serverDB.findOne({ guildId: interaction.guild.id });
-
-        // Yetki kontrolü
-        const hasRole = interaction.member.permissions.has(PermissionsBitField.Flags.ManageChannels) || interaction.member.roles.cache.some(role => serverData.destekRole.includes(role.id));
-        if (!hasRole && !interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-            return interaction.reply({ 
-                content: isTurkish ? "❌ Bu talebi üstlenmek için yetkiniz yok." : "❌ You are not authorized to claim this ticket.", 
-                flags: [MessageFlags.Ephemeral] 
-            });
-        }
-
-        const ticketInfo = serverData.destekUser.find(u => u.channelId === interaction.channel.id);
-        if (ticketInfo.claimedBy) {
-            return interaction.reply({ 
-                content: isTurkish ? `Bu talep zaten <@${ticketInfo.claimedBy}> tarafından üstlenilmiş.` : `This ticket has already been claimed by <@${ticketInfo.claimedBy}>.`, 
-                flags: [MessageFlags.Ephemeral] 
-            });
-        }
-
-        await interaction.deferUpdate();
-
-        // DB Güncelle
-        await serverDB.updateOne(
-            { guildId: interaction.guild.id, "destekUser.channelId": interaction.channel.id },
-            { $set: { "destekUser.$.claimedBy": interaction.user.id } }
-        );
-
-        // Mesajı güncelle
-        const originalEmbed = interaction.message.embeds[0];
-        const newEmbed = EmbedBuilder.from(originalEmbed)
-            .addFields({ name: isTurkish ? "Üstlenen Yetkili" : "Claimed by", value: `<@${interaction.user.id}>` });
-
-        // Butonları güncelle (Claim butonunu kaldır)
-        const closeButton = new ButtonBuilder()
-            .setCustomId("close")
-            .setLabel(isTurkish ? "🔒 Talebi Kapat" : "🔒 Close Ticket")
-            .setStyle(ButtonStyle.Secondary);
-        const newRow = new ActionRowBuilder().addComponents(closeButton);
-
-        await interaction.message.edit({ embeds: [newEmbed], components: [newRow] });
-        await interaction.channel.send({ content: isTurkish ? `Bu talep <@${interaction.user.id}> tarafından üstlenildi.` : `This ticket has been claimed by <@${interaction.user.id}>.` });
-      } else if (interaction.customId === "close") {
-        const modal = new ModalBuilder()
-            .setCustomId('close_ticket_modal')
-            .setTitle(isTurkish ? 'Destek Talebini Kapat' : 'Close Support Ticket');
-        const reasonInput = new TextInputBuilder().setCustomId('close_reason').setLabel(isTurkish ? "Kapatma Nedeni (İsteğe Bağlı)" : "Reason for closing (Optional)").setStyle(TextInputStyle.Paragraph).setRequired(false).setPlaceholder(isTurkish ? 'Talebin neden kapatıldığını kısaca açıklayın...' : 'Briefly explain why the ticket is being closed...');
-        const actionRow = new ActionRowBuilder().addComponents(reasonInput);
-        modal.addComponents(actionRow);
-        await interaction.showModal(modal);
-      } else if (interaction.customId === "del") {
-        await interaction.deferUpdate();
-        const tiklananKanalID = interaction.channel.id;
-
-        const serverData = await serverDB.findOne({
-          guildId: interaction.guild.id,
-        });
-        const destekKanallari = serverData.destekUser || [];
-
-        const bulunanKanalIndex = destekKanallari.findIndex(
-          (channel) => channel.channelId === tiklananKanalID
-        );
-
-        if (bulunanKanalIndex !== -1) {
-          destekKanallari.splice(bulunanKanalIndex, 1);
-          await serverDB.updateOne(
-            { guildId: interaction.guild.id },
-            { $set: { destekUser: destekKanallari } }
-          );
-          await interaction.channel.delete();
-        }
-      } else if (interaction.customId === "open") {
-        await interaction.deferUpdate();
-        let user = await serverDB.findOne({ guildId: interaction.guild.id });
-        let userCheck = user.destekUser.find(
-          (c) => c.channelId === interaction.channel.id
-        );
-        let userID = userCheck.userId;
-        await serverDB.updateOne({ guildId: interaction.guild.id, "destekUser.channelId": interaction.channel.id }, { $set: { "destekUser.$.closed": false } });
-        await interaction.message.edit({ components: [] });
-        await interaction.channel.permissionOverwrites
-          .edit(userID, { ViewChannel: true })
-          .then(async (msg) => {
-            let mevcutKanalAdi = interaction.channel.name;
-            let eskiIsim = isTurkish ? "kapalı-" : "closed-";
-            let yeniIsim = isTurkish ? "destek-" : "ticket-";
-            let yeniKanalAdi = mevcutKanalAdi.replace(eskiIsim, yeniIsim);
-            await interaction.channel.setName(yeniKanalAdi);
-            const closeEmbed = new EmbedBuilder()
-              .setColor(Colors.Green)
-              .setDescription(
-                (isTurkish
-                  ? "Destek talebini yeniden açan: <@"
-                  : "Ticket reopened by: <@") +
-                  interaction.member +
-                  ">"
-              );
-            interaction.channel.send({ embeds: [closeEmbed] });
-          });
-      } else if (interaction.customId === "transcript") {
-        await interaction.deferUpdate();
-        const file = await createTranscript(interaction.channel, {
-          limit: -1,
-          returnType: "attachment",
-          filename: `${interaction.channel.name}.html`,
-          footerText: isTurkish
-            ? "Toplam {number} adet mesaj var"
-            : "There are {number} messages in total",
-          poweredBy: false,
-        });
-
-        await interaction.followUp({ files: [file], flags: MessageFlags.Ephemeral });
-      }
+    const form = consume(i, 'create');
+    if (!form || form.panel !== settings.panelMessageId) return privateReply(i, 'Form is invalid or expired.');
+    const category = form.category ? settings.destekkategoriListesi.find(c => c.value === form.category) : null;
+    if (form.category && !category) return privateReply(i, 'This category has been removed.');
+    if (!S.rateLimit(`ticket-create:${i.guildId}:${i.user.id}`, 2, 60000)) return privateReply(i, 'You are opening tickets too quickly. Please wait.');
+    const subject = i.fields.getTextInputValue('ticket_subject').trim().slice(0, 200);
+    if (!subject) return privateReply(i, 'The subject cannot be empty.');
+    await i.deferReply({ flags: MessageFlags.Ephemeral });
+    await createTicket(i, settings, category, subject);
+    return;
+  }
+  const ticket = settings.destekUser.find(item => item.channelId === i.channelId);
+  const ownerClosing = ticket?.userId === i.user.id && action === 'close';
+  if (!ticket || (!S.isStaff(member, settings) && !ownerClosing) || !S.canRead(i.channel, member)) return privateReply(i, 'You do not have permission to perform this ticket action.');
+  if (i.isButton() && i.message?.author.id !== i.client.user.id) return privateReply(i, 'Use the bot’s ticket message for this action.');
+  if (action === 'close' && !isCloseForm) {
+    if (ticket.closed) return privateReply(i, 'This ticket is already closed.');
+    const nonce = remember(i, { kind: 'close', channel: i.channelId });
+    await i.showModal(new ModalBuilder().setCustomId(`ticket-close:${nonce}`).setTitle('Close ticket').addComponents(
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('close_reason').setLabel('Closing reason (optional)').setStyle(TextInputStyle.Paragraph).setRequired(false).setMaxLength(1000))));
+    return;
+  }
+  if (isCloseForm) {
+    const form = consume(i, 'close');
+    if (!form || form.channel !== i.channelId) return privateReply(i, 'The closing form is invalid or expired.');
+  }
+  const release = S.tryLock(`ticket:${i.guildId}:${i.channelId}`);
+  if (!release) return privateReply(i, 'Another action is in progress on this ticket.');
+  try {
+    await i.deferReply({ flags: MessageFlags.Ephemeral });
+    const latest = await Server.findOne({ guildId: i.guildId });
+    const current = latest?.destekUser.find(item => item.channelId === i.channelId);
+    if (!current) throw new Error('The ticket record has been removed.');
+    if (action === 'transcript') {
+      if (!S.rateLimit(`transcript:${i.guildId}:${i.user.id}`, 1, 30000)) return i.editReply({ content: 'Please wait 30 seconds before requesting another transcript.' });
+      const file = await transcript(i.channel);
+      await i.editReply({ files: [file], content: `Up to ${transcriptLimit} recent messages.` });
+    } else if (action === 'del') {
+      if (!current.closed) return i.editReply({ content: 'Close the ticket first.' });
+      await i.channel.delete('Ticket deleted by support staff');
+      await Server.updateOne({ guildId: i.guildId }, { $pull: { destekUser: { channelId: i.channelId } } });
+    } else if (action === 'open') {
+      if (!current.closed) return i.editReply({ content: 'This ticket is already open.' });
+      await i.channel.permissionOverwrites.edit(current.userId, { ViewChannel: true, SendMessages: true });
+      await Server.updateOne({ guildId: i.guildId, 'destekUser.channelId': i.channelId }, { $set: { 'destekUser.$.closed': false } });
+      await i.channel.setName(current.ticketName || `ticket-${i.channelId}`);
+      await i.message.edit({ components: [] });
+      await i.channel.send({ content: `Ticket reopened by: <@${i.user.id}>`, components: [buttons(false)], allowedMentions: { parse: [] } });
+      await i.editReply({ content: 'Ticket reopened.' });
+    } else if (action === 'claim_ticket') {
+      const result = await Server.updateOne({ guildId: i.guildId, destekUser: { $elemMatch: { channelId: i.channelId, closed: { $ne: true }, claimedBy: null } } }, { $set: { 'destekUser.$.claimedBy': i.user.id } });
+      if (!result.modifiedCount) return i.editReply({ content: 'The ticket is closed or has already been claimed.' });
+      await i.channel.send({ content: `Ticket claimed by: <@${i.user.id}>`, allowedMentions: { parse: [] } });
+      await i.editReply({ content: 'You claimed the ticket.' });
+    } else if (action === 'close') {
+      if (current.closed) return i.editReply({ content: 'This ticket is already closed.' });
+      const reason = i.fields.getTextInputValue('close_reason').trim().slice(0, 1000) || 'No reason provided';
+      await closeTicket(i.channel, latest, current, reason, i.user.id);
+      await i.editReply({ content: 'Ticket closed.' });
     }
-
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('create_ticket_subject_modal')) {
-        const subject = interaction.fields.getTextInputValue('ticket_subject');
-        const serverData = await serverDB.findOne({ guildId: interaction.guild.id });
-
-        // Kullanıcının zaten talebi var mı diye son bir kontrol
-        const aktifTalep = serverData?.destekUser?.find(u => u.userId === interaction.user.id);
-        if (aktifTalep) {
-            return interaction.reply({ content: isTurkish ? "❌ Zaten aktif bir destek talebiniz var." : "❌ You already have an active support ticket.", flags: [MessageFlags.Ephemeral] });
-        }
-
-        let secilenKategori = null;
-        if (interaction.customId.startsWith('create_ticket_subject_modal_cat:')) {
-            const kategoriValue = interaction.customId.split(':')[1];
-            secilenKategori = serverData?.destekkategoriListesi?.find(k => k.value === kategoriValue);
-
-            if (!secilenKategori) {
-                return interaction.reply({
-                    content: isTurkish ? "❌ Seçilen kategori veritabanında bulunamadı." : "❌ Selected category not found in the database.",
-                    flags: [MessageFlags.Ephemeral],
-                });
-            }
-        }
-
-        await interaction.reply({
-            content: isTurkish
-                ? `✅ Talebiniz **${subject}** konusuyla oluşturuluyor...`
-                : `✅ Your ticket is being created with the subject **${subject}**...`,
-            flags: [MessageFlags.Ephemeral],
-        });
-
-        try {
-            await createTicketChannel(interaction, serverData, secilenKategori, subject);
-        } catch (error) {
-            logger.error("Bilet oluşturma hatası:", error);
-            await interaction.followUp({ content: isTurkish ? "Talebiniz oluşturulurken bir hata oluştu." : "An error occurred while creating your ticket.", flags: [MessageFlags.Ephemeral] });
-        }
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId === 'close_ticket_modal') {
-        await interaction.deferUpdate();
-        const reason = interaction.fields.getTextInputValue('close_reason') || (isTurkish ? 'Neden belirtilmedi' : 'No reason provided');
-
-        const serverData = await serverDB.findOne({ guildId: interaction.guild.id });
-        const ticketInfo = serverData.destekUser.find(c => c.channelId === interaction.channel.id);
-        
-        if (!ticketInfo) return;
-
-        // --- Transcript Logging ---
-        if (serverData.destekLogChannel) {
-            const logChannel = await interaction.guild.channels.fetch(serverData.destekLogChannel).catch(() => null);
-            if (logChannel) {
-                try {
-                    const attachment = await createTranscript(interaction.channel, {
-                        limit: -1,
-                        returnType: 'attachment',
-                        filename: `${interaction.channel.name}.html`,
-                        poweredBy: false,
-                    });
-
-                    // Fetch first message to get subject and category
-                    const firstMessage = await interaction.channel.messages.fetch({ after: 0, limit: 1 }).then(messages => messages.first());
-                    const firstEmbed = firstMessage?.embeds?.[0];
-                    
-                    const subject = firstEmbed?.title?.replace('Konu: ', '') || (isTurkish ? 'Bilinmiyor' : 'Unknown');
-                    const categoryField = firstEmbed?.fields?.find(f => f.name === (isTurkish ? 'Kategori' : 'Category'));
-                    const category = categoryField?.value || `\`${isTurkish ? "Genel" : "General"}\``;
-                    const creationTimestamp = Math.floor(interaction.channel.createdTimestamp / 1000);
-
-                    const logEmbed = new EmbedBuilder()
-                        .setColor(Colors.Orange)
-                        .setTitle(isTurkish ? 'Talep Kapatıldı' : 'Ticket Closed')
-                        .setAuthor({ name: interaction.guild.name, iconURL: interaction.guild.iconURL() })
-                        .addFields(
-                            { name: isTurkish ? 'Talep ID' : 'Ticket ID', value: `\`${ticketInfo.ticketName || interaction.channel.name}\``, inline: false },
-                            { name: isTurkish ? 'Konu' : 'Subject', value: subject, inline: false },
-                            { name: isTurkish ? 'Talebi Açan' : 'Opened By', value: `<@${ticketInfo.userId}>`, inline: true },
-                            { name: isTurkish ? 'Talebi Kapatan' : 'Closed By', value: `<@${interaction.user.id}>`, inline: true },
-                            { name: isTurkish ? 'Üstlenen Yetkili' : 'Claimed By', value: ticketInfo.claimedBy ? `<@${ticketInfo.claimedBy}>` : (isTurkish ? 'Yok' : 'None'), inline: true },
-                            { name: isTurkish ? 'Kategori' : 'Category', value: category, inline: true },
-                            { name: isTurkish ? 'Açılış Zamanı' : 'Opened At', value: `<t:${creationTimestamp}:F>`, inline: true },
-                            { name: isTurkish ? 'Kapanış Zamanı' : 'Closed At', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
-                            { name: isTurkish ? 'Kapatma Nedeni' : 'Close Reason', value: reason },
-                        )
-                        .setTimestamp();
-
-                    await logChannel.send({ embeds: [logEmbed], files: [attachment] });
-                } catch (err) {
-                    logger.error("Bilet log'u gönderilemedi:", err);
-                }
-            }
-        }
-
-        // --- Channel Closing Logic ---
-        await serverDB.updateOne({ guildId: interaction.guild.id, "destekUser.channelId": interaction.channel.id }, { $set: { "destekUser.$.claimedBy": null, "destekUser.$.closed": true } });
-        const userID = ticketInfo.userId;
-        await interaction.channel.permissionOverwrites.edit(userID, { ViewChannel: false });
-        
-        let mevcutKanalAdi = interaction.channel.name;
-        let eskiIsim = isTurkish ? "destek-" : "ticket-";
-        let yeniIsim = isTurkish ? "kapalı-" : "closed-";
-        let yeniKanalAdi = mevcutKanalAdi.includes(eskiIsim) ? mevcutKanalAdi.replace(eskiIsim, yeniIsim) : `${yeniIsim}${mevcutKanalAdi}`;
-        await interaction.channel.setName(yeniKanalAdi);
-
-        const delRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId("del").setLabel(isTurkish ? "🗑️ Talebi Sil" : "🗑️ Delete Ticket").setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId("transcript").setLabel(isTurkish ? "📄 Mesaj Geçmişi" : "📄 Transcript").setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId("open").setLabel(isTurkish ? "🔓 Talebi Aç" : "🔓 Reopen Ticket").setStyle(ButtonStyle.Success)
-        );
-
-        const closeEmbed = new EmbedBuilder()
-            .setColor(Colors.Red)
-            .setTitle(isTurkish ? 'Talep Kapatıldı' : 'Ticket Closed')
-            .setDescription(`${isTurkish ? "Destek talebini kapatan" : "Ticket closed by"}: <@${interaction.member.id}>`)
-            .addFields({ name: isTurkish ? 'Neden' : 'Reason', value: reason });
-
-        await interaction.channel.send({ embeds: [closeEmbed], components: [delRow] });
-    }
-  },
-};
+  } finally { release(); }
+}
+module.exports = { name: Events.InteractionCreate, execute, closeTicket, transcriptLimit };

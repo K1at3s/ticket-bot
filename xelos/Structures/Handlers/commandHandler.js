@@ -8,8 +8,12 @@ async function loadCommands(client) {
   const files = await loadFiles('Commands');
   for (const file of files) {
     const command = require(file);
-    if (!command.data || typeof command.execute !== 'function') throw new Error(`Geçersiz komut: ${file}`);
+    if (!command.data || typeof command.execute !== 'function') throw new Error(`Invalid command: ${file}`);
     const data = command.data.toJSON();
+    const { PermissionsBitField } = require('discord.js');
+    if (data.default_member_permissions !== String(PermissionsBitField.Flags.ManageChannels) || command.permissions !== PermissionsBitField.Flags.ManageChannels) {
+      throw new Error(`Missing required management permission declaration: ${data.name}`);
+    }
     if (commands.has(data.name)) throw new Error(`Tekrarlanan komut: ${data.name}`);
     commands.set(data.name, command);
     globalCommands.push(data);
@@ -17,7 +21,7 @@ async function loadCommands(client) {
   await client.application.commands.set(globalCommands);
   client.commands.clear();
   for (const [name, command] of commands) client.commands.set(name, command);
-  logger.info(`${commands.size} komut yüklendi ve global olarak kaydedildi.`);
+  logger.info(`${commands.size} commands loaded and registered globally.`);
 }
 
 module.exports = { loadCommands };

@@ -20,125 +20,118 @@ const {
 } = require("discord.js");
 const { SlashCommandBuilder } = require("discord.js");
 const serverDB = require("../../Structures/Schemas/Server");
+const S = require('../../Structures/Handlers/security');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("ticketsystem")
     .setDMPermission(false)
     .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageChannels)
-    .setNameLocalizations({ tr: "biletsistemi" })
+
     .setDescription("Manage the ticket system.")
-    .setDescriptionLocalizations({ tr: "Bilet sistemini yönetin." })
+
     .addSubcommand((subcommand) =>
       subcommand
         .setName("setup")
-        .setNameLocalizations({ tr: "kurulum" })
+
         .setDescription("Starts the interactive setup for the ticket system.")
-        .setDescriptionLocalizations({
-          tr: "Bilet sistemi için interaktif kurulumu başlatır.",
-        })
+
     )
     .addSubcommand((subcommand) =>
       subcommand
         .setName("config")
-        .setNameLocalizations({ tr: "yapılandır" })
+
         .setDescription("Configure additional settings for the ticket system.")
-        .setDescriptionLocalizations({ tr: "Bilet sistemi için ek ayarları yapılandırın." })
+
         .addChannelOption((option) =>
           option
             .setName("log-channel")
-            .setNameLocalizations({ tr: "log-kanalı" })
+
             .setDescription("The channel to send ticket logs to.")
-            .setDescriptionLocalizations({ tr: "Bilet loglarının gönderileceği kanal." })
+
             .setRequired(false)
             .addChannelTypes(ChannelType.GuildText)
         )
         .addStringOption((option) =>
           option
             .setName("autoclose-duration")
-            .setNameLocalizations({ tr: "otomatik-kapatma-süresi" })
+
             .setDescription("Set inactivity duration (e.g., 24h, 3d) or 'disable'.")
-            .setDescriptionLocalizations({ tr: "Hareketsizlik süresini ayarlayın (örn: 24h, 3d) veya 'kapat' yazın." })
+
             .setRequired(false)
         )
     )
-    .addSubcommand(sub => sub.setName('edit').setNameLocalizations({ tr: 'düzenle' })
+    .addSubcommand(sub => sub.setName('edit')
       .setDescription('Edit the saved ticket panel, messages and embeds.')
-      .setDescriptionLocalizations({ tr: 'Kayıtlı ticket panelini, mesajları ve embedleri düzenle.' }))
+      )
     .addSubcommandGroup((group) =>
       group
         .setName('auto-response')
-        .setNameLocalizations({ tr: 'otomatik-yanıt' })
+
         .setDescription('Manage automated responses for tickets.')
-        .setDescriptionLocalizations({ tr: 'Biletler için otomatik yanıtları yönetin.' })
+
         .addSubcommand((sub) =>
           sub
             .setName('add')
-            .setNameLocalizations({ tr: 'ekle' })
+
             .setDescription('Add a new auto-response.')
-            .setDescriptionLocalizations({ tr: 'Yeni bir otomatik yanıt ekle.' })
-            .addStringOption((opt) => opt.setName('keyword').setNameLocalizations({ tr: 'anahtar-kelime' }).setDescription('The keyword to trigger the response.').setRequired(true))
-            .addStringOption((opt) => opt.setName('response').setNameLocalizations({ tr: 'yanıt' }).setDescription('The automated message to send.').setRequired(true))
+
+            .addStringOption((opt) => opt.setName('keyword').setDescription('The keyword to trigger the response.').setRequired(true))
+            .addStringOption((opt) => opt.setName('response').setDescription('The automated message to send.').setRequired(true))
         )
         .addSubcommand((sub) =>
           sub
             .setName('remove')
-            .setNameLocalizations({ tr: 'kaldır' })
+
             .setDescription('Remove an auto-response.')
-            .setDescriptionLocalizations({ tr: 'Bir otomatik yanıtı kaldır.' })
-            .addStringOption((opt) => opt.setName('keyword').setNameLocalizations({ tr: 'anahtar-kelime' }).setDescription('The keyword of the response to remove.').setRequired(true).setAutocomplete(true))
+
+            .addStringOption((opt) => opt.setName('keyword').setDescription('The keyword of the response to remove.').setRequired(true).setAutocomplete(true))
         )
         .addSubcommand((sub) =>
           sub
             .setName('list')
-            .setNameLocalizations({ tr: 'listele' })
+
             .setDescription('List all auto-responses.')
-            .setDescriptionLocalizations({ tr: 'Tüm otomatik yanıtları listele.' })
+
         )
     )
     .addSubcommand((subcommand) =>
       subcommand
         .setName('search')
-        .setNameLocalizations({ tr: 'ara' })
+
         .setDescription("Searches for a user's past tickets.")
-        .setDescriptionLocalizations({ tr: 'Bir kullanıcının geçmiş biletlerini arar.' })
+
         .addUserOption(option =>
             option.setName('user')
-                .setNameLocalizations({ tr: 'kullanıcı' })
+
                 .setDescription('The user whose tickets you want to search.')
-                .setDescriptionLocalizations({ tr: 'Biletlerini aramak istediğiniz kullanıcı.' })
+
                 .setRequired(true)
         )
     )
     .addSubcommand((subcommand) =>
       subcommand
         .setName("disable") // Primary name is English
-        .setNameLocalizations({ tr: "sıfırla" }) // Turkish localization
+         // Turkish localization
         .setDescription("Resets and disables the ticket system.") // Primary description is English
-        .setDescriptionLocalizations({
-          tr: "Bilet sistemini sıfırlar ve kapatır.", // Turkish localization
-        })
+
     ),
   cooldown: 5000, //1 saniye = 1000 ms / cooldown olmasını istemezseniz 0 yazın.
   ownerOnly: false, //komutu sadece geliştiricinin kullanabilmesini istersen true olarak değiştir
   permissions: PermissionsBitField.Flags.ManageChannels,
   execute: async (interaction, client) => {
     const logger = require("../../Structures/Handlers/logger");
-    const isTurkish = interaction.locale.startsWith("tr");
 
-    let yetkiKontrol = interaction.member.permissions.has(
-      PermissionsBitField.Flags.ManageChannels
-    );
+
+    const yetkiKontrol = await S.isManager(interaction);
     if (!yetkiKontrol) {
       const embed = new EmbedBuilder()
         .setColor(Colors.Red)
         .setDescription(
-          isTurkish
-            ? `${client.config.emojis.x} **Kanalları Yönet** Yetkin bulunmuyor.`
-            : `${client.config.emojis.x} You don't have the **Manage Channels** permission.`
+          `${client.config.emojis.x} You don't have the **Manage Channels** permission.`
         );
       return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
-    } else { // ephemeralı flags: MessageFlags.Ephemeral ile değiştirmeye gerek yok
+    } else {
       if (interaction.options.getSubcommand() === 'edit') {
         const { handleBuilder } = await import('../../../src/panel-builder.js');
         return handleBuilder(interaction, { editExisting: true });
@@ -151,20 +144,23 @@ module.exports = {
           const embed = new EmbedBuilder()
             .setColor(Colors.Yellow)
             .setDescription(
-              isTurkish
-                ? `Destek sistemi zaten <#${serverData.destekMesajKanal}> kanalında aktif.\nSıfırlamak için </biletsistemi sıfırla:${command?.id}> komutunu kullanabilirsiniz.`
-                : `The support system is already active in the <#${serverData.destekMesajKanal}> channel.\nTo reset it, you can use the </ticketsystem disable:${command?.id}> command.`
+              `The support system is already active in the <#${serverData.destekMesajKanal}> channel.\nTo reset it, you can use the </ticketsystem disable:${command?.id}> command.`
             );
           return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
         }
 
 
+        if (serverData?.setupExpires > new Date() && serverData.setupOwner !== interaction.user.id) {
+          return interaction.reply({ content: 'Another manager is configuring the system. Try again when their session expires.', flags: MessageFlags.Ephemeral });
+        }
+        await serverDB.findOneAndUpdate({ guildId: interaction.guildId, $or: [{ setupExpires: { $lte: new Date() } }, { setupExpires: { $exists: false } }, { setupOwner: interaction.user.id }] },
+          { $set: { setupOwner: interaction.user.id, setupExpires: new Date(Date.now() + 300000) } }, { upsert: true });
         const rows = new ActionRowBuilder().addComponents(
           new ChannelSelectMenuBuilder()
             .setCustomId("channel")
             .setChannelTypes(ChannelType.GuildCategory)
             .setPlaceholder(
-              isTurkish ? "Destek Talep Kategorisi" : "Support Ticket Category"
+              "Support Ticket Category"
             )
             .setMinValues(1)
             .setMaxValues(1)
@@ -172,9 +168,7 @@ module.exports = {
         const embed = new EmbedBuilder()
           .setColor(Colors.Green)
           .setDescription(
-            isTurkish
-              ? "Lütfen destek talepleri için bir kategori seçin."
-              : "Please select a category for support tickets."
+            "Please select a category for support tickets."
           );
         const linkembed = await interaction.reply({
           flags: MessageFlags.Ephemeral,
@@ -186,6 +180,11 @@ module.exports = {
           filter, time: 300000, // Setup expires after five minutes
         });
         collector.on("collect", (i) => { void (async () => {
+          if (!(await S.isManager(i)) || !(await S.activeSetup(i))) {
+            collector.stop();
+            if (!i.replied && !i.deferred) await i.reply({ content: 'Your setup session or management permission has expired.', flags: MessageFlags.Ephemeral });
+            return;
+          }
           if (i.customId === "channel") {
             await i.deferUpdate().catch(() => {});
             const categoryId = i.values[0];
@@ -197,14 +196,12 @@ module.exports = {
               { upsert: true }
             );
 
-            // 2. adım: kanal select menüsünü göster
+
             const kanalSecimRow = new ActionRowBuilder().addComponents(
               new ChannelSelectMenuBuilder()
                 .setCustomId("mesajkanali")
                 .setPlaceholder(
-                  isTurkish
-                    ? "Talep mesajının gönderileceği kanal"
-                    : "Channel where the ticket message will be sent"
+                  "Channel where the ticket message will be sent"
                 )
                 .setChannelTypes(ChannelType.GuildText)
                 .setMinValues(1)
@@ -214,9 +211,7 @@ module.exports = {
             const yeniEmbed = new EmbedBuilder()
               .setColor(Colors.Blurple)
               .setDescription(
-                isTurkish
-                  ? `Talep mesajının gönderileceği kanalı seçin.`
-                  : `Select the channel where the ticket message will be sent.`
+                `Select the channel where the ticket message will be sent.`
               );
 
             await linkembed.edit({
@@ -238,17 +233,13 @@ module.exports = {
               new ButtonBuilder()
                 .setCustomId("yontem_buton")
                 .setLabel(
-                  isTurkish
-                    ? "📩 Butonlu Talep Sistemi"
-                    : "📩 Button-based Ticket System"
+                  "📩 Button-based Ticket System"
                 )
                 .setStyle(ButtonStyle.Primary),
               new ButtonBuilder()
                 .setCustomId("yontem_kategori")
                 .setLabel(
-                  isTurkish
-                    ? "📂 Category-based System"
-                    : "📂 Category Selection System"
+                  "📂 Category Selection System"
                 )
                 .setStyle(ButtonStyle.Secondary)
             );
@@ -256,9 +247,7 @@ module.exports = {
             const yontemEmbed = new EmbedBuilder()
               .setColor(Colors.Blue)
               .setDescription(
-                isTurkish
-                  ? "📌 Destek sistemi nasıl çalışsın? Aşağıdan bir yöntem seçin:"
-                  : "📌 How should the support system work? Choose a method below:"
+                "📌 How should the support system work? Choose a method below:"
               );
 
             await interaction.editReply({
@@ -282,7 +271,7 @@ module.exports = {
               new RoleSelectMenuBuilder()
                 .setCustomId("role_buton_setup")
                 .setPlaceholder(
-                  isTurkish ? "Destek Ekibi Rolleri" : "Support Team Roles"
+                  "Support Team Roles"
                 )
                 .setMinValues(1)
                 .setMaxValues(5)
@@ -291,9 +280,7 @@ module.exports = {
             const roleEmbed = new EmbedBuilder()
               .setColor(Colors.Green)
               .setDescription(
-                isTurkish
-                  ? "Lütfen destek ekibi rollerini seçin."
-                  : "Please select the support team roles."
+                "Please select the support team roles."
               );
 
             await interaction.editReply({
@@ -309,18 +296,22 @@ module.exports = {
               .catch(() => null);
             if (!roleInt) return;
 
-            await roleInt.deferUpdate().catch(() => {});
-            const roleIds = roleInt.values;
+            if (!(await S.isManager(roleInt)) || !(await S.activeSetup(roleInt))) return roleInt.reply({ content: 'Your setup permission has expired.', flags: MessageFlags.Ephemeral });
+            await roleInt.deferUpdate();
+            const roleIds = await S.supportRoles(interaction.guild, roleInt.values);
             await serverDB.findOneAndUpdate(
               { guildId: interaction.guild.id },
-              { $set: { destekRole: roleIds } }
+              { $set: { destekRole: roleIds }, $unset: { setupOwner: '', setupExpires: '' } }
             );
 
             const { panelSetup } = require('../../Structures/Handlers/panelSetup');
             await interaction.editReply(panelSetup(interaction.user.id, destekKanalId, 'button'));
             collector.stop();
           }
-        })().catch(error => logger.error("Ticket setup failed", error)); });
+        })().catch(async error => {
+          logger.error('Ticket setup failed', error);
+          await interaction.followUp({ content: error.name === 'Error' ? error.message : 'Unable to complete setup. Check permissions and support roles.', flags: MessageFlags.Ephemeral }).catch(() => {});
+        }); });
       }
 
       if (interaction.options.getSubcommand() === "config") {
@@ -331,28 +322,34 @@ module.exports = {
         let replyMessages = [];
 
         if (logChannel) {
+            const settings = await serverDB.findOne({ guildId: interaction.guildId });
+            if (!settings?.destekRole?.length) return interaction.reply({ content: 'Configure support roles first.', flags: MessageFlags.Ephemeral });
+            try {
+              await S.privateLog(logChannel, settings, client.user.id);
+              if (!S.canRead(logChannel, await S.actor(interaction))) throw new Error('You do not have permission to read the log channel.');
+            } catch (error) { return interaction.reply({ content: error.name === 'Error' ? error.message : 'Unable to verify the private log channel.', flags: MessageFlags.Ephemeral }); }
             updates.destekLogChannel = logChannel.id;
-            replyMessages.push(isTurkish ? `Bilet log kanalı <#${logChannel.id}> olarak ayarlandı.` : `Ticket log channel set to <#${logChannel.id}>.`);
+            replyMessages.push(`Ticket log channel set to <#${logChannel.id}>.`);
         }
 
         if (duration) {
             if (duration.toLowerCase() === 'kapat' || duration.toLowerCase() === 'disable') {
                 updates['destekAutoClose.enabled'] = false;
-                replyMessages.push(isTurkish ? "Otomatik bilet kapatma özelliği devre dışı bırakıldı." : "Automatic ticket closing has been disabled.");
+                replyMessages.push("Automatic ticket closing has been disabled.");
             } else {
                 const durationMs = ms(duration);
                 if (!Number.isFinite(durationMs) || durationMs < 3600000) { // Minimum 1 saat
-                    const embed = new EmbedBuilder().setColor(Colors.Red).setDescription(isTurkish ? "❌ Geçersiz süre. Lütfen '24h', '3d' gibi geçerli bir formatta ve en az 1 saatlik bir süre girin." : "❌ Invalid duration. Please provide a valid format like '24h', '3d' and a duration of at least 1 hour.");
+                    const embed = new EmbedBuilder().setColor(Colors.Red).setDescription("❌ Invalid duration. Please provide a valid format like '24h', '3d' and a duration of at least 1 hour.");
                     return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
                 }
                 updates['destekAutoClose.enabled'] = true;
                 updates['destekAutoClose.duration'] = duration;
-                replyMessages.push(isTurkish ? `Otomatik bilet kapatma süresi **${duration}** olarak ayarlandı.` : `Automatic ticket closing duration set to **${duration}**.`);
+                replyMessages.push(`Automatic ticket closing duration set to **${duration}**.`);
             }
         }
 
         if (Object.keys(updates).length === 0) {
-            return interaction.reply({ content: isTurkish ? "Yapılandırılacak bir ayar belirtmediniz." : "You did not specify a setting to configure.", flags: [MessageFlags.Ephemeral] });
+            return interaction.reply({ content: "You did not specify a setting to configure.", flags: [MessageFlags.Ephemeral] });
         }
 
         await serverDB.findOneAndUpdate(
@@ -363,7 +360,7 @@ module.exports = {
 
         const embed = new EmbedBuilder()
           .setColor(Colors.Green)
-          .setTitle(isTurkish ? "Bilet Sistemi Yapılandırıldı" : "Ticket System Configured")
+          .setTitle("Ticket System Configured")
           .setDescription(replyMessages.map(m => `✅ ${m}`).join('\n'));
         return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
       }
@@ -376,25 +373,27 @@ module.exports = {
         const serverData = await serverDB.findOne({ guildId: interaction.guild.id });
         if (!serverData || !serverData.destekLogChannel) {
             return interaction.editReply({
-                content: isTurkish ? 'Bu sunucuda bir bilet log kanalı ayarlanmamış. Bu özellik kullanılamıyor.' : 'A ticket log channel is not configured on this server. This feature is unavailable.'
+                content: 'A ticket log channel is not configured on this server. This feature is unavailable.'
             });
         }
 
         const logChannel = await interaction.guild.channels.fetch(serverData.destekLogChannel).catch(() => null);
         if (!logChannel) {
             return interaction.editReply({
-                content: isTurkish ? 'Bilet log kanalı bulunamadı. Lütfen ayarları kontrol edin.' : 'The ticket log channel could not be found. Please check the settings.'
+                content: 'The ticket log channel could not be found. Please check the settings.'
             });
         }
+
+        if (!S.canRead(logChannel, await S.actor(interaction))) return interaction.editReply({ content: 'You need View Channel and Read Message History permissions in the log channel.' });
 
         try {
             const messages = await logChannel.messages.fetch({ limit: 100 });
             const userTickets = [];
 
-            const ticketClosedTitle = isTurkish ? 'Talep Kapatıldı' : 'Ticket Closed';
-            const ticketAutoClosedTitle = isTurkish ? 'Talep Otomatik Kapatıldı' : 'Ticket Auto-Closed';
-            const openedByFieldName = isTurkish ? 'Talebi Açan' : 'Opened By';
-            const ticketIdFieldName = isTurkish ? 'Talep ID' : 'Ticket ID';
+            const ticketClosedTitle = 'Ticket Closed';
+            const ticketAutoClosedTitle = 'Ticket Auto-Closed';
+            const openedByFieldName = 'Opened By';
+            const ticketIdFieldName = 'Ticket ID';
 
             for (const message of messages.values()) {
                 if (message.author.id !== interaction.client.user.id || !message.embeds.length) continue;
@@ -414,7 +413,7 @@ module.exports = {
 
             if (userTickets.length === 0) {
                 return interaction.editReply({
-                    content: isTurkish ? `**${targetUser.tag}** adına kayıtlı geçmiş bilet bulunamadı.` : `No past tickets found for **${targetUser.tag}**.`
+                    content: `No past tickets found for **${targetUser.tag}**.`
                 });
             }
 
@@ -428,10 +427,10 @@ module.exports = {
                 const currentTickets = userTickets.slice(start, end);
 
                 const description = currentTickets.map(ticket =>
-                    `• ${ticket.name} - Loga Git\n  └ ${isTurkish ? 'Kapanma' : 'Closed'}: <t:${Math.floor(new Date(ticket.closedAt).getTime() / 1000)}:R>`
+                    `• ${ticket.name} - View log\n  └ ${'Closed'}: <t:${Math.floor(new Date(ticket.closedAt).getTime() / 1000)}:R>`
                 ).join('\n\n');
 
-                return new EmbedBuilder().setTitle(isTurkish ? `${targetUser.username} Adına Geçmiş Biletler` : `Past Tickets for ${targetUser.username}`).setColor(Colors.Blue).setThumbnail(targetUser.displayAvatarURL()).setDescription(description).setFooter({ text: isTurkish ? `Sayfa ${page} / ${totalPages} (${userTickets.length} toplam bilet)` : `Page ${page} / ${totalPages} (${userTickets.length} total tickets)` });
+                return new EmbedBuilder().setTitle(`Past Tickets for ${targetUser.username}`).setColor(Colors.Blue).setThumbnail(targetUser.displayAvatarURL()).setDescription(description).setFooter({ text: `Page ${page} / ${totalPages} (${userTickets.length} total tickets)` });
             };
 
             const row = new ActionRowBuilder().addComponents(
@@ -443,7 +442,7 @@ module.exports = {
             const collector = response.createMessageComponentCollector({ componentType: ComponentType.Button, time: 120000 });
 
             collector.on('collect', async i => {
-                if (i.user.id !== interaction.user.id) return i.reply({ content: isTurkish ? 'Bu butonları sadece komutu kullanan kişi kullanabilir.' : 'Only the person who used the command can use these buttons.', flags: [MessageFlags.Ephemeral] });
+                if (i.user.id !== interaction.user.id) return i.reply({ content: 'Only the person who used the command can use these buttons.', flags: [MessageFlags.Ephemeral] });
                 if (i.customId === 'prev_page') currentPage--; else if (i.customId === 'next_page') currentPage++;
                 row.components[0].setDisabled(currentPage === 1);
                 row.components[1].setDisabled(currentPage === totalPages);
@@ -452,8 +451,8 @@ module.exports = {
 
             collector.on('end', () => { row.components.forEach(button => button.setDisabled(true)); interaction.editReply({ components: [row] }).catch(() => {}); });
         } catch (error) {
-            logger.error('Bilet arama sırasında bir hata oluştu:', error);
-            interaction.editReply({ content: isTurkish ? 'Biletler aranırken bir hata oluştu.' : 'An error occurred while searching for tickets.' });
+            logger.error('Ticket search failed:', error);
+            interaction.editReply({ content: 'An error occurred while searching for tickets.' });
         }
       }
 
@@ -468,7 +467,7 @@ module.exports = {
 
                 const existing = serverData?.destekAutoResponses?.find(ar => ar.keyword === keyword);
                 if (existing) {
-                    return interaction.reply({ content: isTurkish ? `Bu anahtar kelime için zaten bir otomatik yanıt mevcut.` : `An auto-response for this keyword already exists.`, flags: [MessageFlags.Ephemeral] });
+                    return interaction.reply({ content: `An auto-response for this keyword already exists.`, flags: [MessageFlags.Ephemeral] });
                 }
 
                 await serverDB.updateOne(
@@ -477,7 +476,7 @@ module.exports = {
                     { upsert: true }
                 );
 
-                return interaction.reply({ content: isTurkish ? `✅ Otomatik yanıt **${keyword}** anahtar kelimesi için eklendi.` : `✅ Auto-response added for the keyword **${keyword}**.`, flags: [MessageFlags.Ephemeral] });
+                return interaction.reply({ content: `✅ Auto-response added for the keyword **${keyword}**.`, flags: [MessageFlags.Ephemeral] });
             }
             case 'remove': {
                 const keyword = interaction.options.getString('keyword');
@@ -487,21 +486,21 @@ module.exports = {
                 );
 
                 if (result.modifiedCount > 0) {
-                    return interaction.reply({ content: isTurkish ? `✅ **${keyword}** anahtar kelimesine ait otomatik yanıt kaldırıldı.` : `✅ Auto-response for keyword **${keyword}** has been removed.`, flags: [MessageFlags.Ephemeral] });
+                    return interaction.reply({ content: `✅ Auto-response for keyword **${keyword}** has been removed.`, flags: [MessageFlags.Ephemeral] });
                 } else {
-                    return interaction.reply({ content: isTurkish ? `Bu anahtar kelimeye ait bir otomatik yanıt bulunamadı.` : `No auto-response found for this keyword.`, flags: [MessageFlags.Ephemeral] });
+                    return interaction.reply({ content: `No auto-response found for this keyword.`, flags: [MessageFlags.Ephemeral] });
                 }
             }
             case 'list': {
                 const autoResponses = serverData?.destekAutoResponses || [];
                 if (autoResponses.length === 0) {
-                    return interaction.reply({ content: isTurkish ? 'Ayarlanmış otomatik yanıt bulunmuyor.' : 'No auto-responses have been set up.', flags: [MessageFlags.Ephemeral] });
+                    return interaction.reply({ content: 'No auto-responses have been set up.', flags: [MessageFlags.Ephemeral] });
                 }
 
                 const description = autoResponses.map(ar => `**• ${ar.keyword}**\n> ${ar.response.substring(0, 100)}${ar.response.length > 100 ? '...' : ''}`).join('\n\n');
 
                 const embed = new EmbedBuilder()
-                    .setTitle(isTurkish ? 'Otomatik Bilet Yanıtları' : 'Automated Ticket Responses')
+                    .setTitle('Automated Ticket Responses')
                     .setColor(Colors.Blue)
                     .setDescription(description);
 
@@ -523,14 +522,13 @@ module.exports = {
               destekAutoResponses: [],
               "destekAutoClose.enabled": false,
             },
+            $unset: { setupOwner: '', setupExpires: '', panelMessageId: '' },
           }
         );
         const embed = new EmbedBuilder()
           .setColor(Colors.Red)
           .setDescription(
-            isTurkish
-              ? `${client.config.emojis.check2} Destek sistemi sıfırlandı.`
-              : `${client.config.emojis.check2} Support system has been reset.`
+            `${client.config.emojis.check2} Support system has been reset.`
           );
         interaction.reply({ embeds: [embed] });
       }
@@ -552,7 +550,7 @@ module.exports = {
             await interaction.respond(filtered.map(ar => ({ name: ar.keyword, value: ar.keyword })).slice(0, 25));
         } catch (error) {
             const logger = require("../../Structures/Handlers/logger");
-            logger.error("Bilet otomatik-yanıt autocomplete hatası:", error);
+            logger.error("Ticket auto-response autocomplete failed:", error);
             await interaction.respond([]);
         }
     }

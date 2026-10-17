@@ -4,27 +4,30 @@ export const maxBlocks = 15;
 export function newBlock(type, data = {}) { return { id: randomBytes(6).toString('hex'), type, ...data }; }
 export function blockPayload(block) {
   if (block.type === 'text') {
-    if (!block.body?.trim() || block.body.length > 2000) throw new Error('Metin 1–2000 karakter olmalı.');
+    if (!block.body?.trim() || block.body.length > 2000) throw new Error('Text must contain 1–2000 characters.');
     return { content: block.body, embeds: [] };
   }
-  if (!['embed', 'image'].includes(block.type)) throw new Error('Geçersiz parça türü.');
-  if (block.type === 'image' && !block.image) throw new Error('Görsel adresi gerekli.');
-  if (block.type === 'embed' && !block.title && !block.body && !block.image) throw new Error('Embed için başlık, metin veya görsel gir.');
-  if ((block.title?.length || 0) > 256 || (block.body?.length || 0) > 4000) throw new Error('Embed metni çok uzun.');
+  if (!['embed', 'image'].includes(block.type)) throw new Error('Invalid block type.');
+  if (block.type === 'image' && !block.image) throw new Error('An image URL is required.');
+  if (block.type === 'embed' && !block.title && !block.body && !block.image) throw new Error('Provide an embed title, description or image.');
+  if ((block.title?.length || 0) > 256 || (block.body?.length || 0) > 4000) throw new Error('Embed text is too long.');
   const embed = {};
   if (block.type === 'embed' && block.title) embed.title = block.title;
   if (block.type === 'embed' && block.body) embed.description = block.body;
   if (block.image) {
     let url;
-    try { url = new URL(block.image); } catch { throw new Error('Geçerli görsel URL gir.'); }
-    if (!['https:', 'http:'].includes(url.protocol)) throw new Error('Görsel adresi HTTP veya HTTPS olmalı.');
+    try { url = new URL(block.image); } catch { throw new Error('Enter a valid image URL.'); }
+    if (!['https:', 'http:'].includes(url.protocol)) throw new Error('The image URL must use HTTP or HTTPS.');
     embed.image = { url: block.image };
   }
   if (block.color) {
-    if (!/^#?[0-9a-f]{6}$/i.test(block.color)) throw new Error('Rengi #5865F2 biçiminde gir.');
+    if (!/^#?[0-9a-f]{6}$/i.test(block.color)) throw new Error('Enter a HEX color, such as #5865F2.');
     embed.color = parseInt(block.color.replace('#', ''), 16);
   }
-  return { content: null, embeds: [embed] };
+  if (block.content !== undefined && (typeof block.content !== 'string' || block.content.length > 2000)) throw new Error('The message above the embed cannot exceed 2000 characters.');
+  const content = block.content?.replace(/\{space\}|\{boşluk\}|\{bosluk\}/g, '\u200B');
+  if (content?.length > 2000) throw new Error('The message above the embed cannot exceed 2000 characters.');
+  return { content: content || null, embeds: [embed] };
 }
 
 export function moveBlock(blocks, index, direction) {
@@ -35,15 +38,16 @@ export function moveBlock(blocks, index, direction) {
 }
 
 export async function publishBlocks(panel, channel, saved, botId, persist, resolveIdentity) {
-  if (panel.blocks.length > maxBlocks) throw new Error('En fazla 15 parça eklenebilir.');
+  if (panel.blocks.length > maxBlocks) throw new Error('You can add up to 15 blocks.');
   const payloads = panel.blocks.map(blockPayload);
   if (!payloads.length && !saved) return { added: false };
   const identity = resolveIdentity(panel, channel.guild);
+  if (!identity.webhookName.trim()) throw new Error('The webhook name cannot be empty.');
   const hooks = await channel.fetchWebhooks();
   let hook = saved?.channelId === channel.id ? hooks.get(saved.webhookId) : null;
   if (!hook?.token || hook.owner?.id !== botId) hook = hooks.find(h => h.owner?.id === botId && h.name === 'Ticket Panel' && h.token);
   if (!hook && !payloads.length) return { added: false };
-  if (!hook) hook = await channel.createWebhook({ name: 'Ticket Panel', reason: 'Ticket paneli oluşturucu' });
+  if (!hook) hook = await channel.createWebhook({ name: 'Ticket Panel', reason: 'Ticket panel builder' });
   const same = saved?.channelId === channel.id && saved.webhookId === hook.id;
   const signature = JSON.stringify([panel.blocks.map(b => b.id), identity.webhookName, identity.webhookAvatar]);
   const state = { channelId: channel.id, webhookId: hook.id, signature, blockMessages: same ? [...(saved.blockMessages || [])] : [] };

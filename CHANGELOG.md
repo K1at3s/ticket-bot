@@ -1,36 +1,45 @@
 # Changelog
 
+## English interface — 2026-10-17
+
+- Converted built-in commands, forms, buttons, replies, errors and console messages to English.
+- Removed Turkish command localizations and locale-dependent replies.
+- Added `{servername}`, `{servericon}`, `{serveravatar}` and `{space}`; preserved legacy aliases.
+- Translated README/security documentation and added English-only interface tests.
+- Existing custom content and published messages are not automatically rewritten.
+
+## Security improvements — 2026-10-16
+
+- Verified default/runtime Manage Channels requirements for all management commands.
+- Added fresh membership/permission verification and setup ownership/expiry.
+- Rejected @everyone and integration-managed support roles.
+- Bound ticket forms to user/server/panel/channel with single-use nonces.
+- Added atomic MongoDB creation reservations, process-local locks and request limits.
+- Required private transcript targets and target-channel access.
+- Limited transcripts to 2,000 messages and disabled host-side image downloads.
+- Preserved records on cache/access errors and added rollback/recovery tracking.
+- Disabled mentions by default, with explicit ticket-opening recipient limits.
+- Pinned tested dependencies; audit reported no matching advisories.
+- Added security, privacy and concurrency regression tests.
+- Added optional message content above embeds, preserved line breaks and invisible spacing tokens.
+
 ## 1.0.0 — 2026-10-15
 
-### Eklenenler
+- Created the discord.js and MongoDB/Mongoose ticket bot.
+- Adapted XelosV14's handler for global command registration at startup.
+- Added per-server categories, support roles, panel channels and button/select setup.
+- Supported optional category descriptions, names and emoji.
+- Added subject forms, claiming, reasoned closure, reopening, deletion, HTML transcripts, history and inactivity closing.
+- Added a 15-block builder for separate text, embeds and image embeds, with editing, previews, ordering, HEX colors and setImage.
+- Published webhook headers above a separate bot control message.
+- Stored settings/blocks/message IDs in MongoDB.
+- Added `/ticketsystem edit`, `/ticketpanel` and `/panel-label`.
 
-- Discord.js ve MongoDB/Mongoose tabanlı bağımsız ticket botu.
-- XelosV14 yapısından uyarlanan komut handler'ı; açılışta otomatik global komut kaydı.
-- Sunucuya özel kurulum, destek rolleri, kategori ve panel kanalı seçimi.
-- Açıklaması isteğe bağlı, isim ve emoji destekli kategori menüleri ve buton yöntemi.
-- Ticket konusu formu, üstlenme, gerekçeli kapatma, yeniden açma ve silme.
-- HTML mesaj dökümü, log kanalı, geçmiş ticket arama ve hareketsizlikte kapatma.
-- Birbirinden bağımsız metin, embed ve görsel embed parçalarından panel oluşturma.
-- Parçaları ekleme, düzenleme, silme, önizleme ve sıralama; panel başına 15 parça.
-- Her embed için özel HEX renk ve setImage görseli; sadece görsel içeren embed desteği.
-- İçerikleri sırayla webhook'tan, menü/butonu ayrı bot mesajından gönderme.
-- Webhook adı ve avatarında sunucu değişkenleri.
-- Panel ayarlarını, parçaları ve mesaj kimliklerini MongoDB'de saklama.
-- `/ticketsystem edit` ve `/ticketpanel` ile kayıtlı paneli düzenleme.
-- `/panel-label` ile yayınlanmış menü/buton yazısını değiştirme.
-- Kanalları Yönet yetkisi, taslak sahibi ve süre kontrolleri.
+## Current limitations
 
-### Düzeltilenler
-
-- İlk kurulumun otomatik hazır embed göndermesi kaldırıldı.
-- Eksik komut import'u ve bazı ticket işlemlerindeki yetki kontrolleri düzeltildi.
-- Transcript dosyasının gönderildikten sonra silinmesi düzeltildi.
-- Kapalı ticket'ların hareketsizlik denetiminde tekrar işlenmesi engellendi.
-
-### Bilinen sınırlar
-
-- Kullanıcı başına tek ticket kanalı; kapalı kanal silinene kadar sınıra dahildir.
-- Geçmiş arama log kanalındaki son 100 mesajı tarar.
-- Kaynak auto-response davranışı yanıtları ticket açılışında gönderir.
-- Oluşturucu taslakları bellekte 30 dakika tutulur; yeniden başlatmada kaybolur.
-- Farklı kanala panel gönderilince eski kanaldaki panel otomatik kaldırılmaz.
+- One ticket channel per user, including closed channels until deletion.
+- History search scans the latest 100 log messages.
+- Auto-responses run on opening; there is no keyword listener.
+- Drafts expire after 30 minutes or restart.
+- Publishing to another channel does not remove the old panel.
+- Action/publishing locks assume a single bot process.

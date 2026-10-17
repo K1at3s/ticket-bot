@@ -1,7 +1,7 @@
 const required = ['DISCORD_TOKEN', 'MONGODB_URI'];
 for (const key of required) {
   if (!process.env[key]?.trim()) {
-    throw new Error(`${key} eksik. .env dosyasını kontrol et.`);
+    throw new Error(`${key} is missing. Check your .env file.`);
   }
 }
 
