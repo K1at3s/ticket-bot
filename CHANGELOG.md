@@ -1,5 +1,16 @@
 # Changelog
 
+## Bilingual setup and panel templates - 2026-10-19
+
+- Added Discord command/choice localizations and automatic Turkish/English forms and replies based on `interaction.locale`, with English as fallback. No language setting is needed.
+- Replaced collector-based setup with a persistent wizard: category, panel channel, roles, control, design, categories and review.
+- Added automatic two-embed templates and manual empty drafts for both button and dropdown panels; publishing remains explicit.
+- Added ready-made/custom emoji categories with optional descriptions, plus category editing in the builder.
+- Added a required ticket description, rich welcome embeds, native block quotes and emoji action buttons.
+- Preserved saved panels, custom content, component-only messages, webhook identity placeholders and image-only embeds.
+- Added regression coverage for all eight setup combinations, owner/expiry/step/permission guards and bilingual runtime forms.
+- Replaced deprecated Mongoose `new: true` with `returnDocument: 'after'`.
+
 ## English interface — 2026-10-17
 
 - Converted built-in commands, forms, buttons, replies, errors and console messages to English.

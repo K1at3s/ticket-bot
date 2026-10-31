@@ -1,3 +1,5 @@
+import i18n from './i18n.cjs';
+const { t } = i18n;
 export function webhookEnabled(panel) {
   return panel.appearance !== 'none' || Boolean(panel.webhookText || panel.webhookImage);
 }
@@ -35,8 +37,8 @@ export function validateWebhook(panel) {
     if (!panel[key]) continue;
     if (key === 'webhookAvatar' && ['{servericon}', '{serveravatar}', '{sunucuikonu}', '{sunucuavatarı}'].includes(panel[key])) continue;
     let url;
-    try { url = new URL(panel[key]); } catch { throw new Error('Enter a valid webhook image URL.'); }
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Webhook images must use HTTP or HTTPS URLs.');
+    try { url = new URL(panel[key]); } catch { throw new Error(t('Enter a valid webhook image URL.')); }
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error(t('Webhook images must use HTTP or HTTPS URLs.'));
   }
 }
 

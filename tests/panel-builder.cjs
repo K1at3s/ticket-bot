@@ -63,12 +63,12 @@ async function main() {
   let ui, modal;
   const member = { id: 'owner', permissions: { has: () => true }, roles: { cache: new Map() } };
   const members = { fetch: async () => member, me: {} };
-  const base = { locale: 'tr', guild: { id: 'guild', members }, user: { id: 'owner' }, guildId: 'guild', inGuild: () => true, memberPermissions: { has: () => true },
+  const base = { locale: 'en-US', guild: { id: 'guild', members }, user: { id: 'owner' }, guildId: 'guild', inGuild: () => true, memberPermissions: { has: () => true },
     isChatInputCommand: () => false, isModalSubmit: () => false,
     reply: async p => { ui = p; }, editReply: async p => { ui = p; }, update: async p => { ui = p; },
     showModal: async p => { modal = p.toJSON(); }, deferReply: async () => {}, deferUpdate: async () => {} };
   const command = { ...base, commandName: 'ticketpanel', isChatInputCommand: () => true,
-    options: { getChannel: () => ({ id: 'channel' }), getString: () => 'select' } };
+    options: { getChannel: () => ({ id: 'channel' }), getString: name => name === 'mode' ? 'manual' : 'select' } };
   assert.equal(await handlePanel(command), true);
   assert.match(ui.content, /No blocks yet/);
   const serialize = () => ui.components.map(c => c.toJSON());
@@ -111,8 +111,8 @@ async function main() {
   assert.match(ui.content, /2\/15 blocks/);
   const ticketCommand = localRequire('./xelos/Commands/Ticket/ticket-channel.js');
   const editOption = ticketCommand.data.toJSON().options.find(o => o.name === 'edit');
-  assert.equal(editOption.name_localizations, undefined);
-  await ticketCommand.execute({ ...base, locale: 'tr', guild: { id: 'guild', members }, commandName: 'ticketsystem',
+  assert.ok(editOption.description_localizations.tr);
+  await ticketCommand.execute({ ...base, locale: 'en-US', guild: { id: 'guild', members }, commandName: 'ticketsystem',
     isChatInputCommand: () => true, member: { permissions: { has: () => true } },
     options: { getSubcommand: () => 'edit' } }, {});
   assert.match(ui.content, /2\/15 blocks/);

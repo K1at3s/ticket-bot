@@ -6,9 +6,8 @@ const turkish = /[çğıöşüÇĞİÖŞÜ]/;
 async function main() {
   for (const file of ['ticket-channel', 'panel', 'panel-label']) {
     const data = require(`../xelos/Commands/Ticket/${file}.js`).data.toJSON();
-    const serialized = JSON.stringify(data);
-    assert.equal(/name_localizations|description_localizations/.test(serialized), false);
-    assert.equal(turkish.test(serialized), false);
+    assert.equal(turkish.test(data.description), false);
+    assert.ok(data.description_localizations.tr);
   }
   const setup = require('../xelos/Structures/Handlers/panelSetup').panelSetup('owner', 'channel', 'select');
   assert.equal(setup.components[0].toJSON().components[0].label, 'Open panel builder');
@@ -24,6 +23,6 @@ async function main() {
   assert.equal(resolveIdentity({ webhookName: '{sunucuadı}' }, guild).webhookName, guild.name);
   const { blockPayload } = await import(pathToFileURL(path.resolve(__dirname, '../src/panel-blocks.js')));
   assert.equal(blockPayload({ type: 'image', image: 'https://example.com/image.png', content: '{space}\n{space}' }).content, '\u200B\n\u200B');
-  console.log('PASS: English-only command metadata/default UI, English placeholders, spacing and saved-alias compatibility.');
+  console.log('PASS: canonical English commands with Turkish descriptions, English defaults, placeholders and saved-alias compatibility.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

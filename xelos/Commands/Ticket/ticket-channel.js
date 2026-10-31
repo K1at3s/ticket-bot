@@ -1,24 +1,5 @@
-const {
-  ComponentType,
-  EmbedBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  Colors,
-  PermissionsBitField,
-  RoleSelectMenuBuilder,
-  StringSelectMenuBuilder,
-  ChannelSelectMenuBuilder,
-  ChannelType,
-  ActionRowBuilder,
-  AutoModerationActionOptions,
-  AutoModerationActionType,
-  AutoModerationRuleEventType,
-  AutoModerationRuleTriggerType,
-  ModalBuilder,
-  TextInputStyle,
-  MessageFlags,
-} = require("discord.js");
-const { SlashCommandBuilder } = require("discord.js");
+const { t, runWithLanguage, localizeCommand } = require('../../../src/i18n.cjs');
+const { ComponentType, EmbedBuilder, ButtonBuilder, ButtonStyle, Colors, PermissionsBitField, ChannelType, ActionRowBuilder, MessageFlags, SlashCommandBuilder } = require('discord.js');
 const serverDB = require("../../Structures/Schemas/Server");
 const S = require('../../Structures/Handlers/security');
 
@@ -111,15 +92,15 @@ module.exports = {
     )
     .addSubcommand((subcommand) =>
       subcommand
-        .setName("disable") // Primary name is English
-         // Turkish localization
-        .setDescription("Resets and disables the ticket system.") // Primary description is English
+        .setName("disable")
+        .setDescription("Resets and disables the ticket system.")
 
     ),
-  cooldown: 5000, //1 saniye = 1000 ms / cooldown olmasını istemezseniz 0 yazın.
-  ownerOnly: false, //komutu sadece geliştiricinin kullanabilmesini istersen true olarak değiştir
+  cooldown: 5000,
+  ownerOnly: false,
   permissions: PermissionsBitField.Flags.ManageChannels,
   execute: async (interaction, client) => {
+    return runWithLanguage(interaction.locale, async () => {
     const logger = require("../../Structures/Handlers/logger");
 
 
@@ -128,7 +109,7 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setColor(Colors.Red)
         .setDescription(
-          `${client.config.emojis.x} You don't have the **Manage Channels** permission.`
+          `❌ ${t("You don't have the **Manage Channels** permission.")}`
         );
       return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
     } else {
@@ -136,182 +117,9 @@ module.exports = {
         const { handleBuilder } = await import('../../../src/panel-builder.js');
         return handleBuilder(interaction, { editExisting: true });
       }
-      if (interaction.options.getSubcommand() === "setup") {
-        const serverData = await serverDB.findOne({ guildId: interaction.guild.id });
-
-        if (serverData && serverData.destekMesajKanal) {
-          const command = client.application.commands.cache.find(c => c.name === 'ticketsystem');
-          const embed = new EmbedBuilder()
-            .setColor(Colors.Yellow)
-            .setDescription(
-              `The support system is already active in the <#${serverData.destekMesajKanal}> channel.\nTo reset it, you can use the </ticketsystem disable:${command?.id}> command.`
-            );
-          return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
-        }
-
-
-        if (serverData?.setupExpires > new Date() && serverData.setupOwner !== interaction.user.id) {
-          return interaction.reply({ content: 'Another manager is configuring the system. Try again when their session expires.', flags: MessageFlags.Ephemeral });
-        }
-        await serverDB.findOneAndUpdate({ guildId: interaction.guildId, $or: [{ setupExpires: { $lte: new Date() } }, { setupExpires: { $exists: false } }, { setupOwner: interaction.user.id }] },
-          { $set: { setupOwner: interaction.user.id, setupExpires: new Date(Date.now() + 300000) } }, { upsert: true });
-        const rows = new ActionRowBuilder().addComponents(
-          new ChannelSelectMenuBuilder()
-            .setCustomId("channel")
-            .setChannelTypes(ChannelType.GuildCategory)
-            .setPlaceholder(
-              "Support Ticket Category"
-            )
-            .setMinValues(1)
-            .setMaxValues(1)
-        );
-        const embed = new EmbedBuilder()
-          .setColor(Colors.Green)
-          .setDescription(
-            "Please select a category for support tickets."
-          );
-        const linkembed = await interaction.reply({
-          flags: MessageFlags.Ephemeral,
-          embeds: [embed],
-          components: [rows],
-        });
-        let filter = (i) => i.user.id === interaction.member.id;
-        const collector = await linkembed.createMessageComponentCollector({
-          filter, time: 300000, // Setup expires after five minutes
-        });
-        collector.on("collect", (i) => { void (async () => {
-          if (!(await S.isManager(i)) || !(await S.activeSetup(i))) {
-            collector.stop();
-            if (!i.replied && !i.deferred) await i.reply({ content: 'Your setup session or management permission has expired.', flags: MessageFlags.Ephemeral });
-            return;
-          }
-          if (i.customId === "channel") {
-            await i.deferUpdate().catch(() => {});
-            const categoryId = i.values[0];
-
-            // Kategori kaydet
-            await serverDB.findOneAndUpdate(
-              { guildId: interaction.guild.id },
-              { $set: { destekChannel: categoryId } },
-              { upsert: true }
-            );
-
-
-            const kanalSecimRow = new ActionRowBuilder().addComponents(
-              new ChannelSelectMenuBuilder()
-                .setCustomId("mesajkanali")
-                .setPlaceholder(
-                  "Channel where the ticket message will be sent"
-                )
-                .setChannelTypes(ChannelType.GuildText)
-                .setMinValues(1)
-                .setMaxValues(1)
-            );
-
-            const yeniEmbed = new EmbedBuilder()
-              .setColor(Colors.Blurple)
-              .setDescription(
-                `Select the channel where the ticket message will be sent.`
-              );
-
-            await linkembed.edit({
-              embeds: [yeniEmbed],
-              components: [kanalSecimRow],
-            });
-          }
-
-          if (i.customId === "mesajkanali") {
-            await i.deferUpdate().catch(() => {});
-            const kanalId = i.values[0];
-
-            await serverDB.findOneAndUpdate(
-              { guildId: interaction.guild.id },
-              { $set: { destekMesajKanal: kanalId } }
-            );
-
-            const yontemRow = new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setCustomId("yontem_buton")
-                .setLabel(
-                  "📩 Button-based Ticket System"
-                )
-                .setStyle(ButtonStyle.Primary),
-              new ButtonBuilder()
-                .setCustomId("yontem_kategori")
-                .setLabel(
-                  "📂 Category Selection System"
-                )
-                .setStyle(ButtonStyle.Secondary)
-            );
-
-            const yontemEmbed = new EmbedBuilder()
-              .setColor(Colors.Blue)
-              .setDescription(
-                "📌 How should the support system work? Choose a method below:"
-              );
-
-            await interaction.editReply({
-              embeds: [yontemEmbed],
-              components: [yontemRow],
-            });
-          }
-
-          if (i.customId === "yontem_buton") {
-            await i.deferUpdate().catch(() => {});
-
-            const destekKanalId = (
-              await serverDB.findOne({ guildId: interaction.guild.id })
-            )?.destekMesajKanal;
-            const destekKanal =
-              interaction.guild.channels.cache.get(destekKanalId);
-
-            if (!destekKanal) return;
-
-            const roleRow = new ActionRowBuilder().addComponents(
-              new RoleSelectMenuBuilder()
-                .setCustomId("role_buton_setup")
-                .setPlaceholder(
-                  "Support Team Roles"
-                )
-                .setMinValues(1)
-                .setMaxValues(5)
-            );
-
-            const roleEmbed = new EmbedBuilder()
-              .setColor(Colors.Green)
-              .setDescription(
-                "Please select the support team roles."
-              );
-
-            await interaction.editReply({
-              embeds: [roleEmbed],
-              components: [roleRow],
-            });
-
-            const roleFilter = (r) =>
-              r.customId === "role_buton_setup" &&
-              r.user.id === interaction.user.id;
-            const roleInt = await linkembed
-              .awaitMessageComponent({ filter: roleFilter, time: 120000 })
-              .catch(() => null);
-            if (!roleInt) return;
-
-            if (!(await S.isManager(roleInt)) || !(await S.activeSetup(roleInt))) return roleInt.reply({ content: 'Your setup permission has expired.', flags: MessageFlags.Ephemeral });
-            await roleInt.deferUpdate();
-            const roleIds = await S.supportRoles(interaction.guild, roleInt.values);
-            await serverDB.findOneAndUpdate(
-              { guildId: interaction.guild.id },
-              { $set: { destekRole: roleIds }, $unset: { setupOwner: '', setupExpires: '' } }
-            );
-
-            const { panelSetup } = require('../../Structures/Handlers/panelSetup');
-            await interaction.editReply(panelSetup(interaction.user.id, destekKanalId, 'button'));
-            collector.stop();
-          }
-        })().catch(async error => {
-          logger.error('Ticket setup failed', error);
-          await interaction.followUp({ content: error.name === 'Error' ? error.message : 'Unable to complete setup. Check permissions and support roles.', flags: MessageFlags.Ephemeral }).catch(() => {});
-        }); });
+      if (interaction.options.getSubcommand() === 'setup') {
+        const { startSetup } = await import('../../../src/setup.js');
+        return startSetup(interaction);
       }
 
       if (interaction.options.getSubcommand() === "config") {
@@ -323,33 +131,33 @@ module.exports = {
 
         if (logChannel) {
             const settings = await serverDB.findOne({ guildId: interaction.guildId });
-            if (!settings?.destekRole?.length) return interaction.reply({ content: 'Configure support roles first.', flags: MessageFlags.Ephemeral });
+            if (!settings?.destekRole?.length) return interaction.reply({ content: t('Configure support roles first.'), flags: MessageFlags.Ephemeral });
             try {
               await S.privateLog(logChannel, settings, client.user.id);
-              if (!S.canRead(logChannel, await S.actor(interaction))) throw new Error('You do not have permission to read the log channel.');
-            } catch (error) { return interaction.reply({ content: error.name === 'Error' ? error.message : 'Unable to verify the private log channel.', flags: MessageFlags.Ephemeral }); }
+              if (!S.canRead(logChannel, await S.actor(interaction))) throw new Error(t('You do not have permission to read the log channel.'));
+            } catch (error) { return interaction.reply({ content: error.name === 'Error' ? t(error.message) : t('Unable to verify the private log channel.'), flags: MessageFlags.Ephemeral }); }
             updates.destekLogChannel = logChannel.id;
-            replyMessages.push(`Ticket log channel set to <#${logChannel.id}>.`);
+            replyMessages.push(t('Ticket log channel set to {channel}.', { channel: `<#${logChannel.id}>` }));
         }
 
         if (duration) {
             if (duration.toLowerCase() === 'kapat' || duration.toLowerCase() === 'disable') {
                 updates['destekAutoClose.enabled'] = false;
-                replyMessages.push("Automatic ticket closing has been disabled.");
+                replyMessages.push(t('Automatic ticket closing disabled.'));
             } else {
                 const durationMs = ms(duration);
                 if (!Number.isFinite(durationMs) || durationMs < 3600000) { // Minimum 1 saat
-                    const embed = new EmbedBuilder().setColor(Colors.Red).setDescription("❌ Invalid duration. Please provide a valid format like '24h', '3d' and a duration of at least 1 hour.");
+                    const embed = new EmbedBuilder().setColor(Colors.Red).setDescription(`❌ ${t('Invalid duration. Must be at least 1 hour.')}`);
                     return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
                 }
                 updates['destekAutoClose.enabled'] = true;
                 updates['destekAutoClose.duration'] = duration;
-                replyMessages.push(`Automatic ticket closing duration set to **${duration}**.`);
+                replyMessages.push(t('Automatic ticket closing duration set to **{duration}**.', { duration }));
             }
         }
 
         if (Object.keys(updates).length === 0) {
-            return interaction.reply({ content: "You did not specify a setting to configure.", flags: [MessageFlags.Ephemeral] });
+            return interaction.reply({ content: t("You did not specify a setting to configure."), flags: [MessageFlags.Ephemeral] });
         }
 
         await serverDB.findOneAndUpdate(
@@ -360,7 +168,7 @@ module.exports = {
 
         const embed = new EmbedBuilder()
           .setColor(Colors.Green)
-          .setTitle("Ticket System Configured")
+          .setTitle(t("Ticket System Configured"))
           .setDescription(replyMessages.map(m => `✅ ${m}`).join('\n'));
         return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
       }
@@ -373,34 +181,31 @@ module.exports = {
         const serverData = await serverDB.findOne({ guildId: interaction.guild.id });
         if (!serverData || !serverData.destekLogChannel) {
             return interaction.editReply({
-                content: 'A ticket log channel is not configured on this server. This feature is unavailable.'
+                content: t('A ticket log channel is not configured on this server. This feature is unavailable.')
             });
         }
 
         const logChannel = await interaction.guild.channels.fetch(serverData.destekLogChannel).catch(() => null);
         if (!logChannel) {
             return interaction.editReply({
-                content: 'The ticket log channel could not be found. Please check the settings.'
+                content: t('The ticket log channel could not be found. Please check the settings.')
             });
         }
 
-        if (!S.canRead(logChannel, await S.actor(interaction))) return interaction.editReply({ content: 'You need View Channel and Read Message History permissions in the log channel.' });
+        if (!S.canRead(logChannel, await S.actor(interaction))) return interaction.editReply({ content: t('You need View Channel and Read Message History permissions in the log channel.') });
 
         try {
             const messages = await logChannel.messages.fetch({ limit: 100 });
             const userTickets = [];
 
-            const ticketClosedTitle = 'Ticket Closed';
-            const ticketAutoClosedTitle = 'Ticket Auto-Closed';
-            const openedByFieldName = 'Opened By';
-            const ticketIdFieldName = 'Ticket ID';
+            const ticketClosedTitles = new Set(['Ticket Closed', 'Ticket Auto-Closed', 'Talep kapatıldı', 'Talep otomatik kapatıldı']);
 
             for (const message of messages.values()) {
                 if (message.author.id !== interaction.client.user.id || !message.embeds.length) continue;
                 const embed = message.embeds[0];
-                if (embed.title === ticketClosedTitle || embed.title === ticketAutoClosedTitle) {
-                    const openedByField = embed.fields.find(f => f.name === openedByFieldName);
-                    const ticketIdField = embed.fields.find(f => f.name === ticketIdFieldName);
+                if (ticketClosedTitles.has(embed.title)) {
+                    const openedByField = embed.fields.find(f => ['Opened By', 'Açan kullanıcı'].includes(f.name));
+                    const ticketIdField = embed.fields.find(f => ['Ticket ID', 'Talep numarası'].includes(f.name));
                     if (openedByField && openedByField.value.includes(targetUser.id) && ticketIdField) {
                         userTickets.push({
                             name: ticketIdField.value,
@@ -413,7 +218,7 @@ module.exports = {
 
             if (userTickets.length === 0) {
                 return interaction.editReply({
-                    content: `No past tickets found for **${targetUser.tag}**.`
+                    content: t('No past tickets found for **{user}**.', { user: targetUser.tag })
                 });
             }
 
@@ -427,22 +232,23 @@ module.exports = {
                 const currentTickets = userTickets.slice(start, end);
 
                 const description = currentTickets.map(ticket =>
-                    `• ${ticket.name} - View log\n  └ ${'Closed'}: <t:${Math.floor(new Date(ticket.closedAt).getTime() / 1000)}:R>`
+                    `🎫 **${ticket.name}** • [${t('View log')}](${ticket.url})\n> ${t('Closed')}: <t:${Math.floor(new Date(ticket.closedAt).getTime() / 1000)}:R>`
                 ).join('\n\n');
 
-                return new EmbedBuilder().setTitle(`Past Tickets for ${targetUser.username}`).setColor(Colors.Blue).setThumbnail(targetUser.displayAvatarURL()).setDescription(description).setFooter({ text: `Page ${page} / ${totalPages} (${userTickets.length} total tickets)` });
+                return new EmbedBuilder().setTitle(t('Past Tickets for {user}', { user: targetUser.username }).slice(0, 256)).setColor(Colors.Blue).setThumbnail(targetUser.displayAvatarURL()).setDescription(description).setFooter({ text: t('Page {page} / {total} ({count} total tickets)', { page, total: totalPages, count: userTickets.length }) });
             };
 
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('prev_page').setLabel('◀️').setStyle(ButtonStyle.Primary).setDisabled(true),
-                new ButtonBuilder().setCustomId('next_page').setLabel('▶️').setStyle(ButtonStyle.Primary).setDisabled(totalPages <= 1)
+                new ButtonBuilder().setCustomId('prev_page').setEmoji('⬅️').setStyle(ButtonStyle.Primary).setDisabled(true),
+                new ButtonBuilder().setCustomId('next_page').setEmoji('➡️').setStyle(ButtonStyle.Primary).setDisabled(totalPages <= 1)
             );
 
             const response = await interaction.editReply({ embeds: [generateEmbed(currentPage)], components: [row] });
             const collector = response.createMessageComponentCollector({ componentType: ComponentType.Button, time: 120000 });
 
             collector.on('collect', async i => {
-                if (i.user.id !== interaction.user.id) return i.reply({ content: 'Only the person who used the command can use these buttons.', flags: [MessageFlags.Ephemeral] });
+                if (i.user.id !== interaction.user.id) return i.reply({ content: t('Only the person who used the command can use these buttons.'), flags: [MessageFlags.Ephemeral] });
+                if (!(await S.isManager(i)) || !S.canRead(logChannel, await S.actor(i))) return i.reply({ content: t('You need the Manage Channels permission.'), flags: MessageFlags.Ephemeral });
                 if (i.customId === 'prev_page') currentPage--; else if (i.customId === 'next_page') currentPage++;
                 row.components[0].setDisabled(currentPage === 1);
                 row.components[1].setDisabled(currentPage === totalPages);
@@ -450,9 +256,10 @@ module.exports = {
             });
 
             collector.on('end', () => { row.components.forEach(button => button.setDisabled(true)); interaction.editReply({ components: [row] }).catch(() => {}); });
+            return;
         } catch (error) {
             logger.error('Ticket search failed:', error);
-            interaction.editReply({ content: 'An error occurred while searching for tickets.' });
+            return interaction.editReply({ content: t('An error occurred while searching for tickets.') });
         }
       }
 
@@ -467,7 +274,7 @@ module.exports = {
 
                 const existing = serverData?.destekAutoResponses?.find(ar => ar.keyword === keyword);
                 if (existing) {
-                    return interaction.reply({ content: `An auto-response for this keyword already exists.`, flags: [MessageFlags.Ephemeral] });
+                    return interaction.reply({ content: t(`An auto-response for this keyword already exists.`), flags: [MessageFlags.Ephemeral] });
                 }
 
                 await serverDB.updateOne(
@@ -476,7 +283,7 @@ module.exports = {
                     { upsert: true }
                 );
 
-                return interaction.reply({ content: `✅ Auto-response added for the keyword **${keyword}**.`, flags: [MessageFlags.Ephemeral] });
+                return interaction.reply({ content: `✅ ${t('Auto-response added for the keyword **{keyword}**.', { keyword })}`, flags: [MessageFlags.Ephemeral] });
             }
             case 'remove': {
                 const keyword = interaction.options.getString('keyword');
@@ -486,21 +293,21 @@ module.exports = {
                 );
 
                 if (result.modifiedCount > 0) {
-                    return interaction.reply({ content: `✅ Auto-response for keyword **${keyword}** has been removed.`, flags: [MessageFlags.Ephemeral] });
+                    return interaction.reply({ content: `✅ ${t('Auto-response for keyword **{keyword}** has been removed.', { keyword })}`, flags: [MessageFlags.Ephemeral] });
                 } else {
-                    return interaction.reply({ content: `No auto-response found for this keyword.`, flags: [MessageFlags.Ephemeral] });
+                    return interaction.reply({ content: t(`No auto-response found for this keyword.`), flags: [MessageFlags.Ephemeral] });
                 }
             }
             case 'list': {
                 const autoResponses = serverData?.destekAutoResponses || [];
                 if (autoResponses.length === 0) {
-                    return interaction.reply({ content: 'No auto-responses have been set up.', flags: [MessageFlags.Ephemeral] });
+                    return interaction.reply({ content: t('No auto-responses have been set up.'), flags: [MessageFlags.Ephemeral] });
                 }
 
                 const description = autoResponses.map(ar => `**• ${ar.keyword}**\n> ${ar.response.substring(0, 100)}${ar.response.length > 100 ? '...' : ''}`).join('\n\n');
 
                 const embed = new EmbedBuilder()
-                    .setTitle('Automated Ticket Responses')
+                    .setTitle(t('Automated Ticket Responses'))
                     .setColor(Colors.Blue)
                     .setDescription(description);
 
@@ -522,17 +329,18 @@ module.exports = {
               destekAutoResponses: [],
               "destekAutoClose.enabled": false,
             },
-            $unset: { setupOwner: '', setupExpires: '', panelMessageId: '' },
+            $unset: { setupOwner: '', setupExpires: '', setupDraft: '', panelMessageId: '' },
           }
         );
         const embed = new EmbedBuilder()
           .setColor(Colors.Red)
           .setDescription(
-            `${client.config.emojis.check2} Support system has been reset.`
+            `✅ ${t('Support system has been reset.')}`
           );
         interaction.reply({ embeds: [embed] });
       }
     }
+    });
   },
   async autocomplete(interaction) {
     const focusedOption = interaction.options.getFocused(true);
@@ -556,3 +364,5 @@ module.exports = {
     }
   }
 };
+
+localizeCommand(module.exports.data);

@@ -2,6 +2,7 @@ const Server = require('../Schemas/Server');
 const { closeTicket } = require('../../Events/Client/TicketSystem');
 const { tryLock } = require('../Handlers/security');
 const logger = require('../Handlers/logger');
+const { t } = require('../../../src/i18n.cjs');
 const ms = require('ms');
 let running = false;
 
@@ -32,7 +33,7 @@ async function checkInactiveTickets(client) {
           if (!current || current.closed || !currentSettings.destekAutoClose.enabled) continue;
           const messages = await channel.messages.fetch({ limit: 1 });
           const lastActivity = messages.first()?.createdTimestamp || channel.createdTimestamp;
-          if (Date.now() - lastActivity > duration) await closeTicket(channel, currentSettings, current, 'Automatically closed due to inactivity.', client.user.id);
+          if (Date.now() - lastActivity > duration) await closeTicket(channel, currentSettings, current, t('Automatically closed due to inactivity.', {}, current.locale || guild.preferredLocale), client.user.id);
         } catch (error) { logger.error('Automatic ticket closure failed', error); }
         finally { release(); }
       }

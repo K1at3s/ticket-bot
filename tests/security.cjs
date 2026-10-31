@@ -16,6 +16,7 @@ const owner = member('owner');
 const stranger = member('stranger');
 const manager = member('manager', [P.ManageChannels]);
 const staff = member('staff-user'); staff.roles.cache.set('staff', { id: 'staff' });
+let runtimeLocale = 'en-US';
 let settings, creates, deleted, sent, replied, modal, queries, updates;
 let failure = null;
 let visible = true;
@@ -40,7 +41,7 @@ function reset() {
   creates = []; deleted = 0; sent = []; replied = null; modal = null; queries = []; updates = []; failure = null; visible = true; currentMember = owner;
 }
 function interaction(id = 'tic', options = {}) {
-  return { customId: id, guild, guildId: 'guild', channel, channelId: 'ticket', locale: 'tr', client: { user: { id: 'bot' }, config: { emojis: { x: 'X' } } },
+  return { customId: id, guild, guildId: 'guild', channel, channelId: 'ticket', locale: runtimeLocale, client: { user: { id: 'bot' }, config: { emojis: { x: 'X' } } },
     user: { id: currentMember?.id || 'owner' }, member: currentMember, memberPermissions: new PermissionsBitField([P.ManageChannels]),
     inGuild: () => true, isButton: () => true, isStringSelectMenu: () => false, isModalSubmit: () => false,
     isChatInputCommand: () => false, isAutocomplete: () => false, isRepliable: () => true,
@@ -50,9 +51,11 @@ function interaction(id = 'tic', options = {}) {
     deferReply: async () => {}, deferUpdate: async () => {}, showModal: async p => { modal = p.toJSON(); }, ...options };
 }
 Server.findOne = async () => settings;
-Server.findOneAndUpdate = async (query, update) => {
+Server.findOneAndUpdate = async (query, update, options) => {
   queries.push(query);
   if (update.$push?.destekUser) {
+    assert.equal(options.returnDocument, 'after');
+    assert.equal(options.new, undefined);
     assert.equal(typeof query['destekUser.userId'].$ne, 'string');
     if (settings.destekUser.some(t => t.userId === query['destekUser.userId'].$ne)) return null;
     settings.destekCount++;
@@ -222,9 +225,29 @@ async function main() {
   currentMember = manager;
   for (const commandName of client.commands.keys()) await route(interaction('', { commandName, isChatInputCommand: () => true }));
   assert.equal(executions, 3);
+  // Runtime forms, welcome embeds and closing controls follow the interaction's Discord locale.
+  for (const language of ['en', 'tr']) {
+    reset(); settings.language = language === 'tr' ? 'en' : 'tr'; runtimeLocale = language; currentMember = member(`language-owner-${language}`);
+    const nonce = await openForm();
+    assert.equal(modal.components.length, 2);
+    assert.equal(modal.components[0].components[0].label, language === 'tr' ? 'Konu' : 'Subject');
+    assert.equal(modal.components[1].components[0].label, language === 'tr' ? 'Açıklama' : 'Description');
+    await ticket.execute(interaction(nonce, { isButton: () => false, isModalSubmit: () => true,
+      fields: { getTextInputValue: name => name === 'ticket_subject' ? 'My subject' : 'Details\nSecond line' } }));
+    const welcome = sent[0].embeds[0].toJSON();
+    assert.equal(welcome.fields[0].name, language === 'tr' ? '👤 Talep sahibi' : '👤 Ticket owner');
+    assert.match(welcome.fields[3].value, /> Details/);
+    const close = sent[0].components[0].toJSON().components.find(c => c.custom_id === 'close');
+    assert.equal(close.label, language === 'tr' ? 'Talebi kapat' : 'Close ticket');
+    assert.equal(close.emoji.name, '🔒');
+    assert.equal(settings.destekUser[0].description, 'Details\nSecond line');
+    await ticket.execute(interaction('close'));
+    assert.equal(modal.title, language === 'tr' ? 'Talebi kapat' : 'Close ticket');
+  }
   console.log('PASS: global management permissions, fresh/revoked membership, setup owner/expiry, support-role validation and private overwrites.');
   console.log('PASS: outsider/owner/staff action boundaries, forged/stale/wrong-user/replayed forms, atomic duplicate creation and mention suppression.');
   console.log('PASS: private-log role/member exceptions, access-error metadata preservation, shared locks, request limits and bounded transcripts.');
   console.log('PASS: runtime command/autocomplete denial, authorized routing, creation rollback, owner close and closed-form replay rejection.');
+  console.log('PASS: English/Turkish subject + description forms, rich welcome embeds, emoji controls and stored descriptions.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

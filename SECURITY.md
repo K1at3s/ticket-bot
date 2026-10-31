@@ -1,6 +1,6 @@
 # Security model
 
-Last security review: 2026-10-16. English UI update: 2026-10-17. This covers source review and mocked regression tests, not live penetration testing or a guarantee of zero vulnerabilities.
+Last security review: 2026-10-16. Bilingual setup regression checks: 2026-10-19. This covers source review and mocked regression tests, not live penetration testing or a guarantee of zero vulnerabilities.
 
 ## Authorization
 
@@ -35,13 +35,13 @@ Discord command defaults are backed by runtime checks. Membership/guild permissi
 - Manual/automatic ticket actions share process-local locks; publishing and label updates are locked per server.
 - Run one process per token. Multi-process deployments require a shared lock service for action/publishing locks; creation reservations are already database-backed.
 - Ticket forms are bound to user, server, panel/channel and a single-use token, expiring after five minutes.
-- Setup expires after five minutes; panel drafts after 30 minutes. Open sessions are bounded.
+- Setup expires after 15 minutes; panel drafts after 30 minutes. Setup steps check the current owner, nonce, expiry and expected step, including conditional database updates. Open panel sessions are bounded.
 - Per-user/per-server limits: five management commands/10 seconds, three ticket forms/30 seconds, two creations/minute and one transcript/30 seconds.
 - Cache misses/access errors do not discard live ticket records. Abandoned reservations without channels can be recovered after at least 15 minutes.
 
 ## Validation
 
-`bun run test` runs builder, security and English-UI regression tests without a live token/database. Cases include unauthorized/revoked access, setup ownership, @everyone rejection, private overwrites, outsider/owner action boundaries, forged/stale/wrong-user/replayed forms, atomic creation, rollback, private-log exceptions, cache errors and request limits.
+`bun run test` runs builder, security, language and setup regression tests without a live token/database. Cases include all eight language/control/design combinations, unauthorized/revoked access, setup ownership/expiry/step validation, @everyone rejection, private overwrites, outsider/owner action boundaries, forged/stale/wrong-user/replayed forms, atomic creation, rollback, private-log exceptions, cache errors and request limits.
 
 The 2026-10-16 `bun audit --json` scan returned `{}` and exit code 0: no matching known advisories at that time. Direct dependencies are pinned to tested versions; the frozen lockfile was verified with an offline, scripts-disabled install. Run `bun audit` again for a current report.
 Live Discord/MongoDB end-to-end testing was not performed. Scope the MongoDB account to the bot database and restrict network access to the bot host where possible.

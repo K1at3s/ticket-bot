@@ -1,3 +1,4 @@
+const { t } = require('../../../src/i18n.cjs');
 const { PermissionsBitField: { Flags: P }, OverwriteType, ChannelType } = require('discord.js');
 const actors = new WeakMap();
 const locks = new Set();
@@ -34,12 +35,12 @@ async function supportRoles(guild, ids) {
   if (!unique.length || unique.length > 5 || unique.includes(guild.id)) throw new Error('Select 1–5 support roles. @everyone cannot be a support role.');
   for (const id of unique) {
     const role = await guild.roles.fetch(id);
-    if (!role || role.managed) throw new Error('Support roles must exist and be manually assignable.');
+    if (!role || role.managed) throw new Error(t('Support roles must exist and be manually assignable.'));
   }
   return unique;
 }
 function ticketOverwrites(guildId, botId, ownerId, roles) {
-  if (!roles.length || roles.includes(guildId)) throw new Error('@everyone cannot receive ticket access.');
+  if (!roles.length || roles.includes(guildId)) throw new Error(t('@everyone cannot receive ticket access.'));
   const allow = [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.AttachFiles];
   return [
     { id: guildId, type: OverwriteType.Role, deny: [P.ViewChannel] },
@@ -49,16 +50,16 @@ function ticketOverwrites(guildId, botId, ownerId, roles) {
   ];
 }
 async function privateLog(channel, settings, botId) {
-  if (!channel || channel.type !== ChannelType.GuildText || channel.guild.id !== settings.guildId) throw new Error('Select a valid private log channel.');
+  if (!channel || channel.type !== ChannelType.GuildText || channel.guild.id !== settings.guildId) throw new Error(t('Select a valid private log channel.'));
   const roles = await channel.guild.roles.fetch();
   for (const role of roles.values()) {
     if (role.id !== settings.guildId && (role.permissions.has(P.Administrator) || role.permissions.has(P.ManageChannels) || settings.destekRole?.includes(role.id))) continue;
-    if (channel.permissionsFor(role)?.has(P.ViewChannel)) throw new Error('The log channel must only be visible to support staff and managers.');
+    if (channel.permissionsFor(role)?.has(P.ViewChannel)) throw new Error(t('The log channel must only be visible to support staff and managers.'));
   }
   for (const overwrite of channel.permissionOverwrites.cache.values()) {
     if (overwrite.type !== OverwriteType.Member || overwrite.id === botId || !overwrite.allow.has(P.ViewChannel)) continue;
     const member = await channel.guild.members.fetch({ user: overwrite.id, force: true });
-    if (!isStaff(member, settings)) throw new Error('The log channel grants an individual member outside support access.');
+    if (!isStaff(member, settings)) throw new Error(t('The log channel grants an individual member outside support access.'));
   }
 }
 function canRead(channel, member) { return Boolean(member && channel?.permissionsFor(member)?.has([P.ViewChannel, P.ReadMessageHistory])); }
