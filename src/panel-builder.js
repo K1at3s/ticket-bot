@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, PermissionsBitField, ChannelType } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder, RoleSelectMenuBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, PermissionsBitField, ChannelType } from 'discord.js';
 import { blockPayload, maxBlocks, moveBlock, newBlock, publishBlocks } from './panel-blocks.js';
 import { resolveIdentity, validateWebhook, webhookMessages } from './panel-webhook.js';
 const require = createRequire(import.meta.url);
 const Server = require('./bot/Structures/Schemas/Server.js');
 const { buildPanel } = require('./panel-renderer.cjs');
-const { actor, isManager, canPost, tryLock, privateLog } = require('./bot/Structures/Handlers/security');
+const { actor, isManager, canPost, tryLock, privateLog, supportRoles } = require('./bot/Structures/Handlers/security');
 const sessions = new Map();
 const ttl = 30 * 60 * 1000;
 const { t, runWithLanguage, language } = require('./i18n.cjs');
@@ -15,7 +15,7 @@ const names = { text: t('Text'), embed: t('Embed'), image: t('Image embed') };
 import { templatePanel, defaultCategories } from './panel-templates.js';
 
 function button(id, action, label, disabled = false, style = ButtonStyle.Secondary) {
-  const emoji = { addtext: '📝', addembed: '🧩', addimage: '🖼️', design: '🎨', categories: '📂', edit: '✏️', delete: '🗑️', up: '⬆️', down: '⬇️', preview: '👁️', settings: '⚙️', logchannel: '📜', publish: '🚀', cancel: '✖️', choosebutton: '🎫', chooseselect: '📂', chooseauto: '✨', choosemanual: '✏️', continue: '➡️' };
+  const emoji = { addtext: '📝', addembed: '🧩', addimage: '🖼️', design: '🎨', categories: '📂', edit: '✏️', delete: '🗑️', up: '⬆️', down: '⬇️', preview: '👁️', settings: '⚙️', logchannel: '📜', serverconfig: '🛠️', publish: '🚀', cancel: '✖️', choosebutton: '🎫', chooseselect: '📂', chooseauto: '✨', choosemanual: '✏️', continue: '➡️' };
   return new ButtonBuilder().setCustomId(`builder:${action}:${id}`).setLabel(t(label)).setEmoji(emoji[action] || '🔹').setStyle(style).setDisabled(disabled);
 }
 function field(key, label, limit, value = '', required = false, paragraph = false) {
@@ -66,10 +66,12 @@ function view(id, session) {
     button(id, 'edit', t('Edit selected block'), !selected), button(id, 'delete', t('Delete'), !selected, ButtonStyle.Danger),
     button(id, 'up', t('Move up'), !selected || session.selected === 0), button(id, 'down', t('Move down'), !selected || session.selected === p.blocks.length - 1),
     button(id, 'preview', t('Preview block'), !selected)));
-  components.push(new ActionRowBuilder().addComponents(button(id, 'settings', t('Webhook / Menu text')), button(id, 'logchannel', t('Log channel')), button(id, 'publish', t('Publish / Update'), false, ButtonStyle.Success), button(id, 'cancel', t('Cancel'))));
+  components.push(new ActionRowBuilder().addComponents(button(id, 'settings', t('Webhook / Menu text')), button(id, 'logchannel', t('Log channel')), button(id, 'serverconfig', t('Roles / Category')), button(id, 'publish', t('Publish / Update'), false, ButtonStyle.Success), button(id, 'cancel', t('Cancel'))));
   components.push(...buildPanel({ ...p, appearance: 'none' }, session.categories, { preview: true }).components);
   const logLine = session.logChannel ? `\n${t('Log channel')}: <#${session.logChannel}>` : `\n${t('Log channel')}: ${t('Not set')}`;
-  return { content: `**🧩 ${t('Panel builder')}** - <#${session.channel}>${logLine}\n${t('Blocks are sent as separate webhook messages in order. The bot menu/button appears at the bottom.')}\n\n${lines.join('\n') || t('No blocks yet. Add text, an embed or an image.')}\n\n${t('{count}/{max} blocks.', { count: p.blocks.length, max: maxBlocks })}`, embeds: [], components, allowedMentions: { parse: [] } };
+  const roleLine = `\n${t('Support team roles')}: ${session.supportRoles?.length ? session.supportRoles.map(id => `<@&${id}>`).join(' ') : t('Not set')}`;
+  const catLine = `\n${t('Ticket category')}: ${session.ticketCategory ? `<#${session.ticketCategory}>` : t('Not set')}`;
+  return { content: `**🧩 ${t('Panel builder')}** - <#${session.channel}>${logLine}${roleLine}${catLine}\n${t('Blocks are sent as separate webhook messages in order. The bot menu/button appears at the bottom.')}\n\n${lines.join('\n') || t('No blocks yet. Add text, an embed or an image.')}\n\n${t('{count}/{max} blocks.', { count: p.blocks.length, max: maxBlocks })}`, embeds: [], components, allowedMentions: { parse: [] } };
 }
 
 export async function handleBuilder(interaction, options = {}) {
@@ -99,7 +101,7 @@ async function builderInteraction(interaction, { editExisting = false, start } =
       for (const [key, existing] of sessions) if (existing.owner === interaction.user.id && existing.guild === interaction.guildId) sessions.delete(key);
       if (sessions.size >= 10000) throw new Error(t('Too many open drafts. Please try again later.'));
       const sessionId = randomBytes(12).toString('hex');
-      const session = { owner: interaction.user.id, guild: interaction.guildId, channel, logChannel: settings.destekLogChannel || null, categories: settings.destekkategoriListesi || [],
+      const session = { owner: interaction.user.id, guild: interaction.guildId, channel, logChannel: settings.destekLogChannel || null, supportRoles: settings.destekRole || [], ticketCategory: settings.destekChannel || null, categories: settings.destekkategoriListesi || [],
         selected: 0, busy: false, language: language(interaction.locale), choosing: !start && !editExisting && !saved, mode: 'manual', expires: Date.now() + ttl, panel: { appearance: 'none', control, language: language(interaction.locale), buttonEmoji: saved?.buttonEmoji || '',
           webhookName: saved?.webhookName || '{servername}', webhookAvatar: saved?.webhookAvatar || '{servericon}',
           label: saved?.label || '', blocks: migrate(saved) } };
@@ -167,6 +169,29 @@ async function builderInteraction(interaction, { editExisting = false, start } =
       session.logChannel = logChannel.id;
       await Server.updateOne({ guildId: interaction.guildId }, { $set: { destekLogChannel: logChannel.id } });
       await interaction.update({ content: t('Ticket log channel set to {channel}.', { channel: `<#${logChannel.id}>` }), components: [] });
+      return true;
+    }
+    const serverConfigRows = (sid) => [
+      new ActionRowBuilder().addComponents(new RoleSelectMenuBuilder().setCustomId(`builder:roleselect:${sid}`).setMinValues(1).setMaxValues(5).setPlaceholder(t('Support team roles'))),
+      new ActionRowBuilder().addComponents(new ChannelSelectMenuBuilder().setCustomId(`builder:catselect:${sid}`).setChannelTypes(ChannelType.GuildCategory).setMinValues(1).setMaxValues(1).setPlaceholder(t('Ticket category'))),
+    ];
+    if (action === 'serverconfig') {
+      await interaction.reply({ content: t('Select support roles and the ticket category.'), components: serverConfigRows(id), flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    if (action === 'roleselect' && interaction.isRoleSelectMenu()) {
+      const roles = await supportRoles(interaction.guild, interaction.values);
+      session.supportRoles = roles;
+      await Server.updateOne({ guildId: interaction.guildId }, { $set: { destekRole: roles } });
+      await interaction.update({ content: `✅ ${t('Support team roles updated: {roles}', { roles: roles.map(r => `<@&${r}>`).join(' ') })}`, components: serverConfigRows(id) });
+      return true;
+    }
+    if (action === 'catselect' && interaction.isChannelSelectMenu()) {
+      const channel = interaction.channels.first();
+      if (!channel || channel.type !== ChannelType.GuildCategory) throw new Error(t('Select a valid ticket category.'));
+      session.ticketCategory = channel.id;
+      await Server.updateOne({ guildId: interaction.guildId }, { $set: { destekChannel: channel.id } });
+      await interaction.update({ content: `✅ ${t('Ticket category updated: {channel}', { channel: `<#${channel.id}>` })}`, components: serverConfigRows(id) });
       return true;
     }
     if (action === 'preview') {
