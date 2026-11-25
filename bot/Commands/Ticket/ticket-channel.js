@@ -42,6 +42,18 @@ module.exports = {
             .setRequired(false)
         )
     )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("log-channel")
+        .setDescription("Set the ticket log channel.")
+        .addChannelOption((option) =>
+          option
+            .setName("channel")
+            .setDescription("The channel to send ticket logs to.")
+            .setRequired(true)
+            .addChannelTypes(ChannelType.GuildText)
+        )
+    )
     .addSubcommand(sub => sub.setName('edit')
       .setDescription('Edit the saved ticket panel, messages and embeds.')
       )
@@ -171,6 +183,18 @@ module.exports = {
           .setTitle(t("Ticket System Configured"))
           .setDescription(replyMessages.map(m => `✅ ${m}`).join('\n'));
         return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
+      }
+
+      if (interaction.options.getSubcommand() === "log-channel") {
+        const logChannel = interaction.options.getChannel("channel");
+        const settings = await serverDB.findOne({ guildId: interaction.guildId });
+        if (!settings?.destekRole?.length) return interaction.reply({ content: t('Configure support roles first.'), flags: MessageFlags.Ephemeral });
+        try {
+          await S.privateLog(logChannel, settings, client.user.id);
+          if (!S.canRead(logChannel, await S.actor(interaction))) throw new Error(t('You do not have permission to read the log channel.'));
+        } catch (error) { return interaction.reply({ content: error.name === 'Error' ? t(error.message) : t('Unable to verify the private log channel.'), flags: MessageFlags.Ephemeral }); }
+        await serverDB.findOneAndUpdate({ guildId: interaction.guild.id }, { $set: { destekLogChannel: logChannel.id } }, { upsert: true });
+        return interaction.reply({ content: `✅ ${t('Ticket log channel set to {channel}.', { channel: `<#${logChannel.id}>` })}`, flags: [MessageFlags.Ephemeral] });
       }
 
       if (interaction.options.getSubcommand() === "search") {
@@ -324,12 +348,13 @@ module.exports = {
               destekRole: [],
               destekChannel: null,
               destekMesajKanal: null,
+              panelChannelId: null,
               destekkategoriListesi: [],
               destekLogChannel: null,
               destekAutoResponses: [],
               "destekAutoClose.enabled": false,
             },
-            $unset: { setupOwner: '', setupExpires: '', setupDraft: '', panelMessageId: '' },
+            $unset: { setupOwner: '', setupExpires: '', setupDraft: '', panel: '', panelMessageId: '', panelWebhook: '' },
           }
         );
         const embed = new EmbedBuilder()

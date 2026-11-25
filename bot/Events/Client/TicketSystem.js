@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Colors, EmbedBuilder, Events, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, blockQuote, escapeMarkdown } = require('discord.js');
+const { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ChannelType, Colors, EmbedBuilder, Events, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, blockQuote, escapeMarkdown } = require('discord.js');
 const { randomBytes } = require('node:crypto');
 const { createTranscript } = require('discord-html-transcripts');
 const Server = require('../../Structures/Schemas/Server');
@@ -40,20 +40,47 @@ async function transcript(channel) {
     callbacks: { resolveChannel: async id => id === channel.id ? channel : null },
   });
 }
+async function transcriptTxt(channel) {
+  const lines = [];
+  let before;
+  while (lines.length < transcriptLimit) {
+    const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) }).catch(() => null);
+    if (!batch?.size) break;
+    const msgs = [...batch.values()];
+    for (const m of msgs) {
+      const time = new Date(m.createdTimestamp).toISOString();
+      const author = m.author ? `${m.author.tag} (${m.author.id})` : 'Unknown';
+      const body = [m.content, ...m.attachments.map(a => `[attachment: ${a.url}]`), ...m.embeds.map(e => `[embed: ${e.title || e.description || ''}]`)].filter(Boolean).join(' ');
+      lines.push(`[${time}] ${author}: ${body}`);
+      if (lines.length >= transcriptLimit) break;
+    }
+    before = msgs[msgs.length - 1]?.id;
+    if (batch.size < 100) break;
+  }
+  lines.reverse();
+  const text = lines.join('\n') || 'No messages.';
+  return new AttachmentBuilder(Buffer.from(text, 'utf8'), { name: `${channel.id}.txt` });
+}
 async function writeLog(channel, settings, ticket, reason, closer) {
   if (!settings.destekLogChannel) return;
   try {
     const log = await channel.guild.channels.fetch(settings.destekLogChannel);
     await S.privateLog(log, settings, channel.client.user.id);
-    const attachment = await transcript(channel);
-
+    const [html, txt] = await Promise.all([transcript(channel), transcriptTxt(channel)]);
+    const openedAt = ticket.createdAt ? Math.floor(new Date(ticket.createdAt).getTime() / 1000) : null;
+    const duration = ticket.createdAt ? `<t:${openedAt}:R>` : t('Unknown');
     const embed = new EmbedBuilder().setColor(Colors.Orange).setTitle(t('Ticket Closed')).addFields(
-      { name: t('Ticket ID'), value: ticket.ticketName || channel.id },
+      { name: t('Ticket ID'), value: ticket.ticketName || channel.id, inline: true },
+      { name: t('Category'), value: (ticket.category || t('General Support')).slice(0, 1024), inline: true },
+      { name: t('Subject'), value: (ticket.subject || t('No subject')).slice(0, 1024), inline: true },
       { name: t('Opened By'), value: `<@${ticket.userId}>`, inline: true },
       { name: t('Closed By'), value: `<@${closer}>`, inline: true },
-      { name: t('Close Reason'), value: reason.slice(0, 1000) },
+      { name: t('Claimed By'), value: ticket.claimedBy ? `<@${ticket.claimedBy}>` : t('Not claimed'), inline: true },
+      { name: t('Opened At'), value: openedAt ? `<t:${openedAt}:F> (${duration})` : t('Unknown'), inline: false },
+      { name: t('Close Reason'), value: reason.slice(0, 1024) },
+      { name: t('Description'), value: (ticket.description || t('No description provided.')).slice(0, 1024) },
     ).setFooter({ text: t('The transcript includes up to {limit} recent messages.', { limit: transcriptLimit }) }).setTimestamp();
-    await log.send({ embeds: [embed], files: [attachment], allowedMentions: { parse: [] } });
+    await log.send({ embeds: [embed], files: [html, txt], allowedMentions: { parse: [] } });
   } catch (error) { logger.error('Unable to send the transcript to the private log channel', error); }
 }
 async function closeTicket(channel, settings, ticket, reason, closer, locale) {

@@ -5,11 +5,11 @@ const turkish = /[çğıöşüÇĞİÖŞÜ]/;
 
 async function main() {
   for (const file of ['ticket-channel', 'panel', 'panel-label']) {
-    const data = require(`../xelos/Commands/Ticket/${file}.js`).data.toJSON();
+    const data = require(`../bot/Commands/Ticket/${file}.js`).data.toJSON();
     assert.equal(turkish.test(data.description), false);
     assert.ok(data.description_localizations.tr);
   }
-  const setup = require('../xelos/Structures/Handlers/panelSetup').panelSetup('owner', 'channel', 'select');
+  const setup = require('../bot/Structures/Handlers/panelSetup').panelSetup('owner', 'channel', 'select');
   assert.equal(setup.components[0].toJSON().components[0].label, 'Open panel builder');
   const { buildPanel } = require('../src/panel-renderer.cjs');
   assert.equal(buildPanel({ appearance: 'none', control: 'button' }).components[0].toJSON().components[0].label, 'Open a ticket');

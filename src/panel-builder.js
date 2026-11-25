@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, PermissionsBitField, ChannelType } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, PermissionsBitField, ChannelType } from 'discord.js';
 import { blockPayload, maxBlocks, moveBlock, newBlock, publishBlocks } from './panel-blocks.js';
 import { resolveIdentity, validateWebhook, webhookMessages } from './panel-webhook.js';
 const require = createRequire(import.meta.url);
-const Server = require('../xelos/Structures/Schemas/Server.js');
+const Server = require('../bot/Structures/Schemas/Server.js');
 const { buildPanel } = require('./panel-renderer.cjs');
-const { actor, isManager, canPost, tryLock } = require('../xelos/Structures/Handlers/security');
+const { actor, isManager, canPost, tryLock, privateLog } = require('../bot/Structures/Handlers/security');
 const sessions = new Map();
 const ttl = 30 * 60 * 1000;
 const { t, runWithLanguage, language } = require('./i18n.cjs');
@@ -15,7 +15,7 @@ const names = { text: t('Text'), embed: t('Embed'), image: t('Image embed') };
 import { templatePanel, defaultCategories } from './panel-templates.js';
 
 function button(id, action, label, disabled = false, style = ButtonStyle.Secondary) {
-  const emoji = { addtext: '📝', addembed: '🧩', addimage: '🖼️', design: '🎨', categories: '📂', edit: '✏️', delete: '🗑️', up: '⬆️', down: '⬇️', preview: '👁️', settings: '⚙️', publish: '🚀', cancel: '✖️', choosebutton: '🎫', chooseselect: '📂', chooseauto: '✨', choosemanual: '✏️', continue: '➡️' };
+  const emoji = { addtext: '📝', addembed: '🧩', addimage: '🖼️', design: '🎨', categories: '📂', edit: '✏️', delete: '🗑️', up: '⬆️', down: '⬇️', preview: '👁️', settings: '⚙️', logchannel: '📜', publish: '🚀', cancel: '✖️', choosebutton: '🎫', chooseselect: '📂', chooseauto: '✨', choosemanual: '✏️', continue: '➡️' };
   return new ButtonBuilder().setCustomId(`builder:${action}:${id}`).setLabel(t(label)).setEmoji(emoji[action] || '🔹').setStyle(style).setDisabled(disabled);
 }
 function field(key, label, limit, value = '', required = false, paragraph = false) {
@@ -66,9 +66,10 @@ function view(id, session) {
     button(id, 'edit', t('Edit selected block'), !selected), button(id, 'delete', t('Delete'), !selected, ButtonStyle.Danger),
     button(id, 'up', t('Move up'), !selected || session.selected === 0), button(id, 'down', t('Move down'), !selected || session.selected === p.blocks.length - 1),
     button(id, 'preview', t('Preview block'), !selected)));
-  components.push(new ActionRowBuilder().addComponents(button(id, 'settings', t('Webhook / Menu text')), button(id, 'publish', t('Publish / Update'), false, ButtonStyle.Success), button(id, 'cancel', t('Cancel'))));
+  components.push(new ActionRowBuilder().addComponents(button(id, 'settings', t('Webhook / Menu text')), button(id, 'logchannel', t('Log channel')), button(id, 'publish', t('Publish / Update'), false, ButtonStyle.Success), button(id, 'cancel', t('Cancel'))));
   components.push(...buildPanel({ ...p, appearance: 'none' }, session.categories, { preview: true }).components);
-  return { content: `**🧩 ${t('Panel builder')}** - <#${session.channel}>\n${t('Blocks are sent as separate webhook messages in order. The bot menu/button appears at the bottom.')}\n\n${lines.join('\n') || t('No blocks yet. Add text, an embed or an image.')}\n\n${t('{count}/{max} blocks.', { count: p.blocks.length, max: maxBlocks })}`, embeds: [], components, allowedMentions: { parse: [] } };
+  const logLine = session.logChannel ? `\n${t('Log channel')}: <#${session.logChannel}>` : `\n${t('Log channel')}: ${t('Not set')}`;
+  return { content: `**🧩 ${t('Panel builder')}** - <#${session.channel}>${logLine}\n${t('Blocks are sent as separate webhook messages in order. The bot menu/button appears at the bottom.')}\n\n${lines.join('\n') || t('No blocks yet. Add text, an embed or an image.')}\n\n${t('{count}/{max} blocks.', { count: p.blocks.length, max: maxBlocks })}`, embeds: [], components, allowedMentions: { parse: [] } };
 }
 
 export async function handleBuilder(interaction, options = {}) {
@@ -98,7 +99,7 @@ async function builderInteraction(interaction, { editExisting = false, start } =
       for (const [key, existing] of sessions) if (existing.owner === interaction.user.id && existing.guild === interaction.guildId) sessions.delete(key);
       if (sessions.size >= 10000) throw new Error(t('Too many open drafts. Please try again later.'));
       const sessionId = randomBytes(12).toString('hex');
-      const session = { owner: interaction.user.id, guild: interaction.guildId, channel, categories: settings.destekkategoriListesi || [],
+      const session = { owner: interaction.user.id, guild: interaction.guildId, channel, logChannel: settings.destekLogChannel || null, categories: settings.destekkategoriListesi || [],
         selected: 0, busy: false, language: language(interaction.locale), choosing: !start && !editExisting && !saved, mode: 'manual', expires: Date.now() + ttl, panel: { appearance: 'none', control, language: language(interaction.locale), buttonEmoji: saved?.buttonEmoji || '',
           webhookName: saved?.webhookName || '{servername}', webhookAvatar: saved?.webhookAvatar || '{servericon}',
           label: saved?.label || '', blocks: migrate(saved) } };
@@ -148,6 +149,24 @@ async function builderInteraction(interaction, { editExisting = false, start } =
         field('webhookName', t('Webhook name: {servername}'), 80, session.panel.webhookName),
         field('webhookAvatar', t('Avatar URL or {servericon}'), 1000, session.panel.webhookAvatar),
         field('label', t('Menu / Button text'), session.panel.control === 'select' ? 150 : 80, session.panel.label), field('buttonEmoji', t('Button emoji (optional)'), 100, typeof session.panel.buttonEmoji === 'object' ? formatCategories([{ label: '', emoji: session.panel.buttonEmoji }]).slice(2) : session.panel.buttonEmoji)));
+      return true;
+    }
+    if (action === 'logchannel') {
+      await interaction.reply({ content: t('Select the ticket log channel.'), components: [new ActionRowBuilder().addComponents(new ChannelSelectMenuBuilder().setCustomId(`builder:logchannelselect:${id}`).setChannelTypes(ChannelType.GuildText).setMinValues(1).setMaxValues(1).setPlaceholder(t('Log channel')))], flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    if (action === 'logchannelselect' && interaction.isChannelSelectMenu()) {
+      const logChannel = interaction.channels.first();
+      if (!logChannel || logChannel.type !== ChannelType.GuildText) throw new Error(t('Select a valid log channel.'));
+      const settings = await Server.findOne({ guildId: interaction.guildId });
+      if (!settings?.destekRole?.length) throw new Error(t('Configure support roles first.'));
+      try {
+        await privateLog(logChannel, settings, interaction.client.user.id);
+        if (!canPost(logChannel, await actor(interaction))) throw new Error(t('You do not have permission to read the log channel.'));
+      } catch (error) { throw error.name === 'Error' ? error : new Error(t('Unable to verify the private log channel.')); }
+      session.logChannel = logChannel.id;
+      await Server.updateOne({ guildId: interaction.guildId }, { $set: { destekLogChannel: logChannel.id } });
+      await interaction.update({ content: t('Ticket log channel set to {channel}.', { channel: `<#${logChannel.id}>` }), components: [] });
       return true;
     }
     if (action === 'preview') {

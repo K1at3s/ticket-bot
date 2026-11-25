@@ -5,7 +5,7 @@ import { MessageFlags } from 'discord.js';
 import { handleBuilder } from './panel-builder.js';
 
 const require = createRequire(import.meta.url);
-export const panelCommand = require('../xelos/Commands/Ticket/panel.js').data;
+export const panelCommand = require('../bot/Commands/Ticket/panel.js').data;
 
 export async function handlePanel(interaction) {
   if (await handleBuilder(interaction)) return true;

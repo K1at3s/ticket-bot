@@ -37,7 +37,7 @@
 ## 1.0.0 — 2026-10-15
 
 - Created the discord.js and MongoDB/Mongoose ticket bot.
-- Adapted XelosV14's handler for global command registration at startup.
+- Adapted botV14's handler for global command registration at startup.
 - Added per-server categories, support roles, panel channels and button/select setup.
 - Supported optional category descriptions, names and emoji.
 - Added subject forms, claiming, reasoned closure, reopening, deletion, HTML transcripts, history and inactivity closing.
