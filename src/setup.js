@@ -59,8 +59,8 @@ export async function startSetup(i) {
     const settings = await Server.findOne({ guildId: i.guildId });
     if (settings?.destekChannel && settings.destekRole?.length) return i.editReply({ content: t('The ticket system is already configured. Use /ticketsystem edit to edit the panel.') });
     if (settings?.setupExpires > new Date() && settings.setupOwner !== i.user.id) return i.editReply({ content: t('Another manager is configuring the system. Try again when their session expires.') });
-    const draft = { id: randomBytes(12).toString('hex'), language: language(i.locale), step: 'category' };
-    // Unique guildId also prevents a second process from creating a competing setup document.
+    const existing = settings?.setupDraft;
+    const draft = existing && steps.includes(existing.step) ? { ...structuredClone(existing), id: randomBytes(12).toString('hex'), language: language(i.locale) } : { id: randomBytes(12).toString('hex'), language: language(i.locale), step: 'category' };
     await Server.findOneAndUpdate({ guildId: i.guildId, $or: [{ setupExpires: { $lte: new Date() } }, { setupExpires: { $exists: false } }, { setupOwner: i.user.id }] },
       { $set: { setupOwner: i.user.id, setupExpires: new Date(Date.now() + ttl), setupDraft: draft } }, { upsert: true });
     await i.editReply(setupView(draft, i.guild));
