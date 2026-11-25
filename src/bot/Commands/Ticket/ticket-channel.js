@@ -1,4 +1,4 @@
-const { t, runWithLanguage, localizeCommand } = require('../../../src/i18n.cjs');
+const { t, runWithLanguage, localizeCommand } = require('../../../i18n.cjs');
 const { ComponentType, EmbedBuilder, ButtonBuilder, ButtonStyle, Colors, PermissionsBitField, ChannelType, ActionRowBuilder, MessageFlags, SlashCommandBuilder } = require('discord.js');
 const serverDB = require("../../Structures/Schemas/Server");
 const S = require('../../Structures/Handlers/security');
@@ -126,11 +126,11 @@ module.exports = {
       return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
     } else {
       if (interaction.options.getSubcommand() === 'edit') {
-        const { handleBuilder } = await import('../../../src/panel-builder.js');
+        const { handleBuilder } = await import('../../../panel-builder.js');
         return handleBuilder(interaction, { editExisting: true });
       }
       if (interaction.options.getSubcommand() === 'setup') {
-        const { startSetup } = await import('../../../src/setup.js');
+        const { startSetup } = await import('../../../setup.js');
         return startSetup(interaction);
       }
 

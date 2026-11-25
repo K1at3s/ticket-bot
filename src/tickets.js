@@ -6,11 +6,11 @@ import { handleSetup } from './setup.js';
 import { handlePanel } from './panel.js';
 
 const require = createRequire(import.meta.url);
-const { loadCommands } = require('../bot/Structures/Handlers/commandHandler.js');
-const ticketHandler = require('../bot/Events/Client/TicketSystem.js');
-const initializeChecker = require('../bot/Structures/Tasks/ticketInactivityChecker.js');
+const { loadCommands } = require('./bot/Structures/Handlers/commandHandler.js');
+const ticketHandler = require('./bot/Events/Client/TicketSystem.js');
+const initializeChecker = require('./bot/Structures/Tasks/ticketInactivityChecker.js');
 const setupIds = new Set(['yontem_kategori', 'kategori_modal', 'role_category_setup']);
-const { isManager, rateLimit } = require('../bot/Structures/Handlers/security');
+const { isManager, rateLimit } = require('./bot/Structures/Handlers/security');
 
 export function registerTickets(client) {
   client.config = { emojis: { x: '❌', check2: '✅' } };

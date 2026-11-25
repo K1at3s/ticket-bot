@@ -11,9 +11,9 @@ module.exports = {
     .addStringOption(o => o.setName('mode').setDescription('Creation method (or choose in the builder)').addChoices({ name: 'Automatic template', value: 'automatic' }, { name: 'Build manually', value: 'manual' })),
   permissions: PermissionsBitField.Flags.ManageChannels,
   async execute(interaction) {
-    const { handlePanel } = await import('../../../src/panel.js');
+    const { handlePanel } = await import('../../../panel.js');
     await handlePanel(interaction);
   },
 };
 
-require('../../../src/i18n.cjs').localizeCommand(module.exports.data);
+require('../../../i18n.cjs').localizeCommand(module.exports.data);

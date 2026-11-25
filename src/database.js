@@ -9,7 +9,7 @@ export async function connectDatabase() {
   await mongoose.connect(config.mongoUri, { dbName: config.database, serverSelectionTimeoutMS: 10000 });
   const database = mongoose.connection.db;
   await database.command({ ping: 1 });
-  await require('../bot/Structures/Schemas/Server.js').init();
+  await require('./bot/Structures/Schemas/Server.js').init();
   console.log('MongoDB connection ready.');
   return database;
 }

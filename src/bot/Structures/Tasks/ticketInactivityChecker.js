@@ -2,7 +2,7 @@ const Server = require('../Schemas/Server');
 const { closeTicket } = require('../../Events/Client/TicketSystem');
 const { tryLock } = require('../Handlers/security');
 const logger = require('../Handlers/logger');
-const { t } = require('../../../src/i18n.cjs');
+const { t } = require('../../../i18n.cjs');
 const ms = require('ms');
 let running = false;
 

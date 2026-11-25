@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { ChannelType, PermissionsBitField, Collection } = require('discord.js');
-const Server = require('../bot/Structures/Schemas/Server');
+const Server = require('../src/bot/Structures/Schemas/Server');
 const { t, runWithLanguage } = require('../src/i18n.cjs');
 const { parseCategories, parseEmoji } = require('../src/categories.cjs');
 const { buildPanel } = require('../src/panel-renderer.cjs');
@@ -133,10 +133,10 @@ async function main() {
   const result = await Promise.all(['en', 'tr'].map(language => runWithLanguage(language, async () => { await Promise.resolve(); return t('Subject'); })));
   assert.deepEqual(result, ['Subject', 'Konu']); assert.equal(t('Subject'), 'Subject');
   assert.equal(require('../src/i18n.cjs').translator('de')('Subject'), 'Subject');
-  const config = require('../bot/Commands/Ticket/ticket-channel').data.toJSON().options.find(option => option.name === 'config');
+  const config = require('../src/bot/Commands/Ticket/ticket-channel').data.toJSON().options.find(option => option.name === 'config');
   assert.equal(config.options.some(option => option.name === 'language'), false);
   // History continues to find logs created before or after changing languages.
-  const command = require('../bot/Commands/Ticket/ticket-channel');
+  const command = require('../src/bot/Commands/Ticket/ticket-channel');
   const fetchChannel = guild.channels.fetch;
   guild.channels.fetch = async id => id === 'log' ? { permissionsFor: () => new PermissionsBitField(Object.values(P)), messages: { fetch: async () => new Map([
     ['en', { author: { id: 'bot' }, url: 'https://discord.com/channels/guild/log/en', embeds: [{ title: 'Ticket Closed', fields: [{ name: 'Opened By', value: '<@target>' }, { name: 'Ticket ID', value: 'ticket-en' }], timestamp: new Date().toISOString() }] }],

@@ -4,9 +4,9 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder,
 import { blockPayload, maxBlocks, moveBlock, newBlock, publishBlocks } from './panel-blocks.js';
 import { resolveIdentity, validateWebhook, webhookMessages } from './panel-webhook.js';
 const require = createRequire(import.meta.url);
-const Server = require('../bot/Structures/Schemas/Server.js');
+const Server = require('./bot/Structures/Schemas/Server.js');
 const { buildPanel } = require('./panel-renderer.cjs');
-const { actor, isManager, canPost, tryLock, privateLog } = require('../bot/Structures/Handlers/security');
+const { actor, isManager, canPost, tryLock, privateLog } = require('./bot/Structures/Handlers/security');
 const sessions = new Map();
 const ttl = 30 * 60 * 1000;
 const { t, runWithLanguage, language } = require('./i18n.cjs');

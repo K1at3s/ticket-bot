@@ -54,7 +54,7 @@ async function main() {
   assert.deepEqual(events.map(e => e[0]), ['delete', 'delete', 'delete', 'send', 'send', 'send']);
   assert.equal(events[3][1].embeds[0].title, embed.title);
 
-  const Server = localRequire('./bot/Structures/Schemas/Server.js');
+  const Server = localRequire('./src/bot/Structures/Schemas/Server.js');
   const settings = { guildId: 'guild', destekChannel: 'category', destekRole: ['staff'], destekkategoriListesi: [{ label: 'General', value: 'general' }] };
   Server.findOne = async () => settings;
   Server.updateOne = async (filter, update) => { Object.assign(settings, update.$set); };
@@ -109,7 +109,7 @@ async function main() {
   assert.match(ui.content, /published/);
   await handlePanel(command);
   assert.match(ui.content, /2\/15 blocks/);
-  const ticketCommand = localRequire('./bot/Commands/Ticket/ticket-channel.js');
+  const ticketCommand = localRequire('./src/bot/Commands/Ticket/ticket-channel.js');
   const editOption = ticketCommand.data.toJSON().options.find(o => o.name === 'edit');
   assert.ok(editOption.description_localizations.tr);
   await ticketCommand.execute({ ...base, locale: 'en-US', guild: { id: 'guild', members }, commandName: 'ticketsystem',
@@ -117,7 +117,7 @@ async function main() {
     options: { getSubcommand: () => 'edit' } }, {});
   assert.match(ui.content, /2\/15 blocks/);
   assert.match(ui.content, /<#channel>/);
-  const setup = localRequire('./bot/Structures/Handlers/panelSetup.js').panelSetup('owner', 'channel', 'select');
+  const setup = localRequire('./src/bot/Structures/Handlers/panelSetup.js').panelSetup('owner', 'channel', 'select');
   assert.match(setup.components[0].toJSON().components[0].custom_id, /^builder:create:/);
   console.log('PASS: multiple independent embeds/text/images, validation, movement and ordered webhook publishing.');
   console.log('PASS: real setup/command routing, add/edit/delete/select, owner guard, component-only bot and saved-panel reload.');

@@ -1,4 +1,4 @@
-const { t } = require('../../../src/i18n.cjs');
+const { t } = require('../../../i18n.cjs');
 const { PermissionsBitField: { Flags: P }, OverwriteType, ChannelType } = require('discord.js');
 const actors = new WeakMap();
 const locks = new Set();

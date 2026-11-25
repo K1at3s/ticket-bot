@@ -4,8 +4,8 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder,
 import { defaultCategories, templatePanel } from './panel-templates.js';
 import { handleBuilder } from './panel-builder.js';
 const require = createRequire(import.meta.url);
-const Server = require('../bot/Structures/Schemas/Server');
-const S = require('../bot/Structures/Handlers/security');
+const Server = require('./bot/Structures/Schemas/Server');
+const S = require('./bot/Structures/Handlers/security');
 const { translator, runWithLanguage, language } = require('./i18n.cjs');
 const { parseCategories } = require('./categories.cjs');
 const ttl = 15 * 60 * 1000;

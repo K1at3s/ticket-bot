@@ -1,6 +1,6 @@
 const { Events, MessageFlags } = require('discord.js');
-const { t } = require('../../../src/i18n.cjs');
-const { parseCategories } = require('../../../src/categories.cjs');
+const { t } = require('../../../i18n.cjs');
+const { parseCategories } = require('../../../categories.cjs');
 
 // Legacy setup controls must not mutate the new wizard's draft or saved configuration.
 module.exports = {

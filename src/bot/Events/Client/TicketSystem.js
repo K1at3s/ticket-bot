@@ -4,7 +4,7 @@ const { createTranscript } = require('discord-html-transcripts');
 const Server = require('../../Structures/Schemas/Server');
 const S = require('../../Structures/Handlers/security');
 const logger = require('../../Structures/Handlers/logger');
-const { t, runWithLanguage, language } = require('../../../src/i18n.cjs');
+const { t, runWithLanguage, language } = require('../../../i18n.cjs');
 const pending = new Map();
 const transcriptLimit = 2000;
 const privateReply = (i, content) => i.reply({ content, flags: MessageFlags.Ephemeral });

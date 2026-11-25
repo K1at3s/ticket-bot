@@ -81,5 +81,9 @@ export async function publishBlocks(panel, channel, saved, botId, persist, resol
       await persist(structuredClone(state));
     }
   }
+  const keep = new Set(panel.blocks.map(b => b.id));
+  const stale = state.blockMessages.filter(m => !keep.has(m.blockId));
+  for (const entry of stale) await hook.deleteMessage(entry.messageId).catch(e => { if (e.code !== 10008) throw e; });
+  if (stale.length) { state.blockMessages = state.blockMessages.filter(m => keep.has(m.blockId)); await persist(structuredClone(state)); }
   return { added, state };
 }

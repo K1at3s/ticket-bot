@@ -4,12 +4,12 @@ const { pathToFileURL } = require('node:url');
 const path = require('node:path');
 const { PermissionsBitField, OverwriteType, ChannelType, Collection, Events } = require('discord.js');
 const P = PermissionsBitField.Flags;
-const S = require('../bot/Structures/Handlers/security');
-const Server = require('../bot/Structures/Schemas/Server');
-const ticket = require('../bot/Events/Client/TicketSystem');
-const command = require('../bot/Commands/Ticket/ticket-channel');
-const category = require('../bot/Events/Client/TicketCategory');
-const labelCommand = require('../bot/Commands/Ticket/panel-label');
+const S = require('../src/bot/Structures/Handlers/security');
+const Server = require('../src/bot/Structures/Schemas/Server');
+const ticket = require('../src/bot/Events/Client/TicketSystem');
+const command = require('../src/bot/Commands/Ticket/ticket-channel');
+const category = require('../src/bot/Events/Client/TicketCategory');
+const labelCommand = require('../src/bot/Commands/Ticket/panel-label');
 
 function member(id, permissions = []) { return { id, permissions: new PermissionsBitField(permissions), roles: { cache: new Collection() } }; }
 const owner = member('owner');
@@ -159,7 +159,7 @@ async function main() {
   assert.equal(deleted, 1); assert.equal(settings.destekUser.length, 0);
   reset(); currentMember = member('cleanup-owner');
   const cleanup = await openForm(); failure = 'cleanup';
-  const logger = require('../bot/Structures/Handlers/logger');
+  const logger = require('../src/bot/Structures/Handlers/logger');
   const originalError = logger.error;
   let cleanupLogged = false;
   logger.error = () => { cleanupLogged = true; };
@@ -197,7 +197,7 @@ async function main() {
   reset();
   settings.destekAutoClose = { enabled: true, duration: '1h' }; settings.destekUser = [{ channelId: 'ticket', userId: 'owner', closed: false }];
   Server.find = async () => [settings];
-  const checker = require('../bot/Structures/Tasks/ticketInactivityChecker').checkInactiveTickets;
+  const checker = require('../src/bot/Structures/Tasks/ticketInactivityChecker').checkInactiveTickets;
   const errorGuild = { id: 'guild', channels: { cache: new Map(), fetch: async () => { throw Object.assign(new Error('Missing access'), { code: 50001 }); } } };
   await checker({ guilds: { cache: new Map([['guild', errorGuild]]) }, user: { id: 'bot' } });
   assert.equal(updates.some(entry => entry.update.$pull?.destekUser?.channelId === 'ticket'), false);
@@ -205,7 +205,7 @@ async function main() {
 
   // All three public commands declare a default permission and a runtime permission.
   for (const file of ['panel.js', 'panel-label.js', 'ticket-channel.js']) {
-    const c = require(`../bot/Commands/Ticket/${file}`);
+    const c = require(`../src/bot/Commands/Ticket/${file}`);
     assert.equal(c.data.toJSON().default_member_permissions, String(P.ManageChannels));
     assert.equal(c.permissions, P.ManageChannels);
   }

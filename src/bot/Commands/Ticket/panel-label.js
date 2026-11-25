@@ -1,7 +1,7 @@
-const { t, runWithLanguage, localizeCommand } = require('../../../src/i18n.cjs');
+const { t, runWithLanguage, localizeCommand } = require('../../../i18n.cjs');
 const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 const Server = require('../../Structures/Schemas/Server');
-const { updateLabelComponents } = require('../../../src/panel-label.cjs');
+const { updateLabelComponents } = require('../../../panel-label.cjs');
 const { actor, isManager, canPost, tryLock } = require('../../Structures/Handlers/security');
 module.exports = {
   data: new SlashCommandBuilder().setName('panel-label')
